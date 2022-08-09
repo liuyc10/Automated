@@ -9,23 +9,22 @@ cap.set(cv.CAP_PROP_FRAME_WIDTH, 1920)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, 1080)
 frames = []
 
-while (cap.isOpened()):
-
+while cap.isOpened():
     ret, frame = cap.read()
 
     if frame is None:
         cap.release()
         break
     frames.append(frame)
-    new_frame = kc.use_canny(frame)
-    cv.imshow('capture', new_frame)
+    # new_frame = kc.use_canny(frame)
+    # cv.imshow('capture', new_frame)
+
+    if len(frames) == 3:
+        new_frame = kc.use_canny(frames)
+        frames = []
+        cv.imshow('capture', new_frame)
 
     if cv.waitKey(1) & 0xFF == ord('q'):
         break
-
-"""    if len(frames) == 3:
-        new_frame = kc.use_canny(frames)
-        frames = []
-        cv.imshow('capture', new_frame)"""
 
 cap.release()

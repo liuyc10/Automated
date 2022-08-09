@@ -9,6 +9,7 @@ THRESHOLD2 = 250
 cor_left = [0, 0]
 cor_right = [1919, 0]
 
+
 def distance(src, tar):
     return [(src[0] - t[0]) ** 2 + (src[1] - t[1]) ** 2 for t in tar]
 
@@ -28,14 +29,80 @@ def get_ruler(img):
 
 
 def get_gray(imgs):
-
     gray = np.zeros((1080, 1920))
     for img in imgs:
         g = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
         gray += g
     gray /= len(imgs)
 
-    return gray.astype('unit8')
+    return np.unit8(gray)
+
+
+def get_edges(images):
+    global GAUSS, THRESHOLD2, THRESHOLD1, DEBUG, cor_right, cor_left
+
+    image = images[0]
+    gray = [cv.COLOR_BGR2GRAY(i for i in images)]
+
+    r, threshold_screen = cv.threshold(gray[0].copy(), 100, 255, cv.THRESH_TOZERO)
+    if DEBUG:
+        show_img(threshold_screen)
+    blur_screen = cv.GaussianBlur(threshold_screen, (GAUSS, GAUSS), 0)
+    canny_screen = cv.Canny(blur_screen, threshold1=THRESHOLD1, threshold2=THRESHOLD2)
+
+    s = np.zeros((1080, 1920))
+    for g in gray:
+        revers = cv.bitwise_not(g)
+        rr, threshold_temp = cv.threshold(revers, 240, 255, cv.THRESH_BINARY)
+        s += threshold_temp
+    threshold_ruler = np.unit8(s / len(gray))
+    if DEBUG:
+        show_img(threshold_ruler, 'ruler')
+    rr, threshold_ruler = cv.threshold(threshold_ruler, 127, 255, cv.THRESH_BINARY)
+    blur_ruler = cv.GaussianBlur(threshold_ruler, (GAUSS, GAUSS), 0)
+    canny_ruler = cv.Canny(blur_ruler, threshold1=100, threshold2=250)
+
+    contours_screen, _ = cv.findContours(canny_screen, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
+    contours_ruler, __ = cv.findContours(canny_ruler, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
+
+    contours_flat_screen = []
+    for contour in contours_screen:
+        shape = contour.shape
+        contours_flat_screen.extend(contour.reshape(shape[0], 2))
+
+    contours_flat_ruler = []
+    for contour in contours_ruler:
+        shape = contour.shape
+        contours_flat_ruler.extend(contour.reshape(shape[0], 2))
+    if DEBUG:
+        cv.drawContours(image, contours_ruler, -1, (0, 0, 255), 5)
+
+    h, w, d = image.shape
+
+    if len(contours_flat_ruler) != 0:
+        approx_ruler = cv.approxPolyDP(np.asarray(contours_flat_ruler), 1080, True)
+
+        r_approx_ruler = approx_ruler.reshape(approx_ruler.shape[0], 2)
+
+        for cor in r_approx_ruler:
+            if cor[0] == 0:  # and cor[1] > 700:
+                cor_left = cor
+            elif cor[0] == 1919:  # and cor[1] > 700:
+                cor_right = cor
+        cv.line(image, cor_left, cor_right, (0, 255, 0), 5)
+
+    if len(contours_flat_screen) != 0:
+        approx_screen = cv.approxPolyDP(np.asarray(contours_flat_screen), 10, True)
+        r_approx = approx_screen.reshape(approx_screen.shape[0], 2)
+        cor_top_left = r_approx[np.asarray(distance((0, 0), r_approx)).argmin()]
+        cor_bottom_left = r_approx[np.asarray(distance((w, 0), r_approx)).argmin()]
+        cor_top_right = r_approx[np.asarray(distance((0, h), r_approx)).argmin()]
+        cor_bottom_right = r_approx[np.asarray(distance((w, h), r_approx)).argmin()]
+
+        box = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
+        cv.drawContours(image, [box], -1, (255, 0, 0), 3)
+
+    return image
 
 
 def use_canny(imgs):
@@ -98,8 +165,6 @@ def use_canny(imgs):
         r = 255 - r
         b = 255 - b"""
 
-
-
     # cv.drawContours(img, [approx], -1, (0, 255, 0), 3)
     cv.drawContours(img, contours_ruler, -1, (0, 0, 255), 5)
 
@@ -109,9 +174,9 @@ def use_canny(imgs):
         r_approx_ruler = approx_ruler.reshape(approx_ruler.shape[0], 2)
 
         for cor in r_approx_ruler:
-            if cor[0] == 0: # and cor[1] > 700:
+            if cor[0] == 0:  # and cor[1] > 700:
                 cor_left = cor
-            elif cor[0] == 1919: # and cor[1] > 700:
+            elif cor[0] == 1919:  # and cor[1] > 700:
                 cor_right = cor
         cv.line(img, cor_left, cor_right, (0, 255, 0), 5)
 
