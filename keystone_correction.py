@@ -38,11 +38,13 @@ def get_gray(imgs):
     return np.unit8(gray)
 
 
-def get_edges(images):
+def get_edges(images, mask=None):
     global GAUSS, THRESHOLD2, THRESHOLD1, DEBUG, cor_right, cor_left
-
+    box = []
     image = images[0]
-    gray = [cv.COLOR_BGR2GRAY(i for i in images)]
+    gray = []
+    for im in images:
+        gray.append(cv.cvtColor(im, cv.COLOR_BGR2GRAY))
 
     r, threshold_screen = cv.threshold(gray[0].copy(), 100, 255, cv.THRESH_TOZERO)
     if DEBUG:
@@ -50,15 +52,21 @@ def get_edges(images):
     blur_screen = cv.GaussianBlur(threshold_screen, (GAUSS, GAUSS), 0)
     canny_screen = cv.Canny(blur_screen, threshold1=THRESHOLD1, threshold2=THRESHOLD2)
 
-    s = np.zeros((1080, 1920))
+    s = np.zeros(image.shape[:2])
     for g in gray:
         revers = cv.bitwise_not(g)
-        rr, threshold_temp = cv.threshold(revers, 240, 255, cv.THRESH_BINARY)
+        rr, threshold_temp = cv.threshold(revers, 215, 255, cv.THRESH_BINARY)
+        if mask is not None:
+            threshold_temp = cv.bitwise_and(threshold_temp, mask).copy()
         s += threshold_temp
-    threshold_ruler = np.unit8(s / len(gray))
+
+    s = s / len(gray)
+
+    threshold_ruler = s.astype(np.uint8)
+
     if DEBUG:
         show_img(threshold_ruler, 'ruler')
-    rr, threshold_ruler = cv.threshold(threshold_ruler, 127, 255, cv.THRESH_BINARY)
+    # rr, threshold_ruler = cv.threshold(threshold_ruler, 127, 255, cv.THRESH_BINARY)
     blur_ruler = cv.GaussianBlur(threshold_ruler, (GAUSS, GAUSS), 0)
     canny_ruler = cv.Canny(blur_ruler, threshold1=100, threshold2=250)
 
@@ -98,11 +106,10 @@ def get_edges(images):
         cor_bottom_left = r_approx[np.asarray(distance((w, 0), r_approx)).argmin()]
         cor_top_right = r_approx[np.asarray(distance((0, h), r_approx)).argmin()]
         cor_bottom_right = r_approx[np.asarray(distance((w, h), r_approx)).argmin()]
-
         box = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
         cv.drawContours(image, [box], -1, (255, 0, 0), 3)
 
-    return image
+    return image, box
 
 
 def use_canny(imgs):
