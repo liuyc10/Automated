@@ -8,7 +8,13 @@ from tools import DataWriter
 
 
 def get_video(src):
-    v = cv.VideoCapture(src)
+    if src == 'live':
+        v = cv.VideoCapture(0, cv.CAP_DSHOW)
+        v.set(cv.CAP_PROP_FRAME_WIDTH, 1920)
+        v.set(cv.CAP_PROP_FRAME_HEIGHT, 1080)
+    else:
+        v = cv.VideoCapture(src)
+    # cv.VideoCapture(0, cv.CAP_DSHOW)
     # cap.set(cv.CAP_PROP_FRAME_WIDTH, 1920)
     # cap.set(cv.CAP_PROP_FRAME_HEIGHT, 1080)
     return v
@@ -25,7 +31,7 @@ def video_show(src):
             break
 
 
-def mark(src, frame_count, data_writer):
+def mark(src, frame_count=1, writer=None):
     frames = []
     boxes = []
     sleep(5)
@@ -35,8 +41,8 @@ def mark(src, frame_count, data_writer):
 
         if frame is None:
             src.release()
-            data_writer.write_dataset(boxes)
-            data_writer.save()
+            writer.write_dataset(boxes)
+            writer.save()
             break
         frames.append(frame)
         # new_frame = kc.use_canny(frame)
@@ -52,19 +58,20 @@ def mark(src, frame_count, data_writer):
 
         if cv.waitKey(1) & 0xFF == ord('q'):
             src.release()
-            data_writer.write_dataset(boxes)
-            data_writer.save()
+            writer.write_dataset(boxes)
+            writer.save()
             break
 
 
 if __name__ == '__main__':
-    source = './res/WIN_20220810_16_46_23_Pro.mp4'
+    source = 'live'
+    # source = './res/WIN_20220810_16_46_23_Pro.mp4'
     cap = get_video(source)
     data_writer = DataWriter('./data/data.xlsx')
     try:
-        for i in range(5, 19, 2):
-            mark(cap, i, data_writer)
-            cap = get_video(source)
+        # for i in range(5, 19, 2):
+        mark(cap, 1, data_writer)
+        cap = get_video(source)
     # except Exception as ex:
     #    print(ex)
     #    cap.release()
