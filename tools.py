@@ -30,13 +30,13 @@ class DataWriter:
 
     def write_dataset(self, write_dataset):
         print('start writing data......', end=' ')
-        frame_no = 1
+        row_no = 1
         sheet_name = self.wb.sheets.count
         sheet = self.wb.sheets.add(str(sheet_name))
-        for data in write_dataset:
-            sheet.range(frame_no, 1).value = frame_no
-            sheet.range(frame_no, 2).value = data.flatten()
-            frame_no += 1
+        for frame_path, data in write_dataset:
+            sheet.range(row_no, 1).value = frame_path
+            sheet.range(row_no, 2).value = data.flatten()
+            row_no += 1
         print('Done')
 
     def save(self):
@@ -46,7 +46,6 @@ class DataWriter:
         self.wb.save(self.path)
         self.wb.close()
         self.app.quit()
-
 
 
 app = None
@@ -90,4 +89,3 @@ def write_to_file(data_set, path):
     else:
         wb = app.books.open(path)
         sht = wb.sheets.add(str(datetime.datetime.now()))
-

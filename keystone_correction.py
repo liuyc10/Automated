@@ -3,15 +3,72 @@ import numpy as np
 import location_detemination as ld
 
 DEBUG = True
-GAUSS = 5
-THRESHOLD1 = 100
+GAUSS = 3
+THRESHOLD1 = 200
 THRESHOLD2 = 250
 cor_left = [0, 0]
 cor_right = [1919, 0]
 
 
-def distance(src, tar):
-    return [(src[0] - t[0]) ** 2 + (src[1] - t[1]) ** 2 for t in tar]
+def get_line(pt0, pt1):
+    y0, x0 = pt0
+    y1, x1 = pt1
+    return [y1 - y0, x0 - x1, x1 * y0 - x0 * y1]
+
+
+def get_perpendicular_line(pt, line):
+    y, x = pt
+    a, b, c = line
+    return [b, -a, a * y - b * x]
+
+
+def get_parallel_line(pt, line):
+    y, x = pt
+    a, b, c = line
+    c = -(a*x+b*y)
+    return [a, b, c]
+
+
+def get_cross_rec(cross):
+    cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left = cross
+    top_line = get_line(cor_top_left, cor_top_right)
+    bottom_line = get_line(cor_bottom_left, cor_bottom_right)
+    left_line = get_line(cor_top_left, cor_bottom_left)
+    right_line = get_line(cor_top_right, cor_bottom_right)
+    return [top_line, bottom_line, left_line, right_line]
+
+
+def get_extend_rec(corners, cross):
+    top_left, top_right, bottom_right, bottom_left = corners
+    lines = get_cross_rec(cross)
+    top_line, bottom_line, left_line, right_line = lines
+    top_line_e = get_parallel_line(top_left, top_line)
+    left_line_e = get_parallel_line(top_left, left_line)
+    bottom_line_e = get_parallel_line(bottom_right, bottom_line)
+    right_line_e = get_parallel_line(bottom_right, right_line)
+    cor_top_left = get_cross_pt(top_line_e, left_line_e)
+    cor_top_right = get_cross_pt(top_line_e, right_line_e)
+    cor_bottom_right = get_cross_pt(bottom_line_e, right_line_e)
+    cor_bottom_left = get_cross_pt(bottom_line_e, left_line_e)
+    return np.asarray([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
+
+
+def get_cross_pt(line0, line1):
+    a0, b0, c0 = line0
+    a1, b1, c1 = line1
+    y = (c1 * a0 - c0 * a1) / (b0 * a1 - b1 * a0)
+    x = (c1 * b0 - c0 * b1) / (a0 * b1 - a1 * b0)
+    return [y, x]
+
+
+def distance_P2P(pt0, pt1):
+    return [(pt0[0] - t[0]) ** 2 + (pt0[1] - t[1]) ** 2 for t in pt1]
+
+
+def distance_P2L(pt, line):
+    y, x = pt
+    a, b, c = line
+    return abs(a * x + b * y + c) / ((a ** 2 + b ** 2) ** 0.5)
 
 
 def show_img(img, name='img'):
@@ -20,96 +77,113 @@ def show_img(img, name='img'):
     cv.waitKey(10)
 
 
-def get_ruler(img):
-    red = img.copy()
-    red[:, :, 0] = 0
-    red[:, :, 1] = 0
-
-    return red
-
-
-def get_gray(imgs):
-    gray = np.zeros((1080, 1920))
-    for img in imgs:
-        g = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-        gray += g
-    gray /= len(imgs)
-
-    return np.unit8(gray)
+def make_mask(box, offset=0):
+    mask = np.ones((1080, 1920))
+    mask = mask * 255
+    box_w_offset = box + [[offset, offset],
+                          [offset, -offset],
+                          [-offset, -offset],
+                          [-offset, offset]]
+    mask = cv.fillConvexPoly(mask, box_w_offset, 0)
+    return np.uint8(mask)
 
 
-def get_edges(images, mask=None):
+def cal_area(pts):
+    area = 0.0
+    y0, x0 = pts[-1]
+    for y1, x1 in pts:
+        area += (y1 * x0 - x1 * y0)
+        y0, x0 = y1, x1
+    return abs(area) / 2
+
+
+def cal_central_point(pts):
+    if len(pts) < 3:
+        return np.uint8((pts[0] + pts[-1]) / 2)
+    else:
+        area = cal_area(pts)
+
+        if area == 0.0:
+            return None, None
+        else:
+            yc, xc = 0.0, 0.0
+            y0, x0 = pts[-1]
+            for y1, x1 in pts:
+                xc += ((x1 + x0) * (y1 * x0 - y0 * x1))
+                yc += ((y1 + y0) * (y1 * x0 - y0 * x1))
+                y0, x0 = y1, x1
+            return round(yc / (6 * area)), round(xc / (6 * area))
+
+
+def get_edges(image, mask=None):
     global GAUSS, THRESHOLD2, THRESHOLD1, DEBUG, cor_right, cor_left
     box = []
-    image = images[0]
-    gray = []
-    for im in images:
-        gray.append(cv.cvtColor(im, cv.COLOR_BGR2GRAY))
-
-    r, threshold_screen = cv.threshold(gray[0].copy(), 100, 255, cv.THRESH_TOZERO)
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    r, threshold_screen = cv.threshold(gray.copy(), 100, 255, cv.THRESH_BINARY)
     if DEBUG:
         show_img(threshold_screen)
     blur_screen = cv.GaussianBlur(threshold_screen, (GAUSS, GAUSS), 0)
     canny_screen = cv.Canny(blur_screen, threshold1=THRESHOLD1, threshold2=THRESHOLD2)
 
-    s = np.zeros(image.shape[:2])
-    for g in gray:
-        revers = cv.bitwise_not(g)
-        rr, threshold_temp = cv.threshold(revers, 215, 255, cv.THRESH_BINARY)
-        if mask is not None:
-            threshold_temp = cv.bitwise_and(threshold_temp, mask).copy()
-        s += threshold_temp
-
-    s = s / len(gray)
-
-    threshold_ruler = s.astype(np.uint8)
-
-    if DEBUG:
-        show_img(threshold_ruler, 'ruler')
-    # rr, threshold_ruler = cv.threshold(threshold_ruler, 127, 255, cv.THRESH_BINARY)
-    blur_ruler = cv.GaussianBlur(threshold_ruler, (GAUSS, GAUSS), 0)
-    canny_ruler = cv.Canny(blur_ruler, threshold1=100, threshold2=250)
-
-    contours_screen, _ = cv.findContours(canny_screen, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
-    contours_ruler, __ = cv.findContours(canny_ruler, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
+    contours_screen, _ = cv.findContours(canny_screen, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 
     contours_flat_screen = []
     for contour in contours_screen:
         shape = contour.shape
         contours_flat_screen.extend(contour.reshape(shape[0], 2))
 
-    contours_flat_ruler = []
-    for contour in contours_ruler:
-        shape = contour.shape
-        contours_flat_ruler.extend(contour.reshape(shape[0], 2))
-    if DEBUG:
-        cv.drawContours(image, contours_ruler, -1, (0, 0, 255), 5)
-
     h, w, d = image.shape
-
-    if len(contours_flat_ruler) != 0:
-        approx_ruler = cv.approxPolyDP(np.asarray(contours_flat_ruler), 1080, True)
-
-        r_approx_ruler = approx_ruler.reshape(approx_ruler.shape[0], 2)
-
-        for cor in r_approx_ruler:
-            if cor[0] == 0:  # and cor[1] > 700:
-                cor_left = cor
-            elif cor[0] == 1919:  # and cor[1] > 700:
-                cor_right = cor
-        cv.line(image, cor_left, cor_right, (0, 255, 0), 5)
 
     if len(contours_flat_screen) != 0:
         approx_screen = cv.approxPolyDP(np.asarray(contours_flat_screen), 10, True)
         r_approx = approx_screen.reshape(approx_screen.shape[0], 2)
-        cor_top_left = r_approx[np.asarray(distance((0, 0), r_approx)).argmin()]
-        cor_bottom_left = r_approx[np.asarray(distance((w, 0), r_approx)).argmin()]
-        cor_top_right = r_approx[np.asarray(distance((0, h), r_approx)).argmin()]
-        cor_bottom_right = r_approx[np.asarray(distance((w, h), r_approx)).argmin()]
+        cor_top_left = r_approx[np.asarray(distance_P2P((0, 0), r_approx)).argmin()]
+        cor_bottom_left = r_approx[np.asarray(distance_P2P((h, 0), r_approx)).argmin()]
+        cor_top_right = r_approx[np.asarray(distance_P2P((0, w), r_approx)).argmin()]
+        cor_bottom_right = r_approx[np.asarray(distance_P2P((w, h), r_approx)).argmin()]
         box = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
-        cv.drawContours(image, [box], -1, (255, 0, 0), 3)
+        if DEBUG:
+            cv.drawContours(image, [box], -1, (255, 0, 0), 3)
+        return box
+    else:
+        return None
 
-    return image, box
+
+def get_cross(image, mask=None):
+    global GAUSS, THRESHOLD2, THRESHOLD1, DEBUG, cor_right, cor_left
+    cross = []
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    gray_w_mask = cv.bitwise_or(gray.copy(), mask)
+    r, threshold_screen = cv.threshold(gray_w_mask, 120, 255, cv.THRESH_BINARY_INV)
+    if DEBUG:
+        show_img(threshold_screen, 'cross')
+    blur_screen = cv.GaussianBlur(threshold_screen, (GAUSS, GAUSS), 0)
+    canny_screen = cv.Canny(blur_screen, threshold1=THRESHOLD1, threshold2=THRESHOLD2)
+    # if DEBUG:
+    #    show_img(canny_screen)
+    contours_screen, _ = cv.findContours(canny_screen, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    if len(contours_screen) < 4:
+        return None
+    for contour in contours_screen:
+        c_y, c_x = cal_central_point(contour.reshape(contour.shape[0], 2))
+        if c_y is None:
+            return None
+        cross.append([c_y, c_x])
+        if DEBUG:
+            cv.drawContours(image, contours_screen, -1, (0, 255, 0), 1)
+            cv.circle(image, (c_y, c_x), 1, (0, 0, 255), -1)
+    if DEBUG:
+        show_img(image, 'none')
+
+    h, w, d = image.shape
+
+    cor_top_left = cross[np.asarray(distance_P2P((0, 0), cross)).argmin()]
+    cor_bottom_left = cross[np.asarray(distance_P2P((h, 0), cross)).argmin()]
+    cor_top_right = cross[np.asarray(distance_P2P((0, w), cross)).argmin()]
+    cor_bottom_right = cross[np.asarray(distance_P2P((w, h), cross)).argmin()]
+    cor = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
+
+    return cor
 
 
 def use_canny(imgs):
@@ -190,10 +264,10 @@ def use_canny(imgs):
     if len(contours_flat_screen) != 0:
         approx_screen = cv.approxPolyDP(np.asarray(contours_flat_screen), 10, True)
         r_approx = approx_screen.reshape(approx_screen.shape[0], 2)
-        cor_top_left = r_approx[np.asarray(distance((0, 0), r_approx)).argmin()]
-        cor_bottom_left = r_approx[np.asarray(distance((w, 0), r_approx)).argmin()]
-        cor_top_right = r_approx[np.asarray(distance((0, h), r_approx)).argmin()]
-        cor_bottom_right = r_approx[np.asarray(distance((w, h), r_approx)).argmin()]
+        cor_top_left = r_approx[np.asarray(distance_P2P((0, 0), r_approx)).argmin()]
+        cor_bottom_left = r_approx[np.asarray(distance_P2P((w, 0), r_approx)).argmin()]
+        cor_top_right = r_approx[np.asarray(distance_P2P((0, h), r_approx)).argmin()]
+        cor_bottom_right = r_approx[np.asarray(distance_P2P((w, h), r_approx)).argmin()]
 
         box = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
         cv.drawContours(img, [box], -1, (255, 0, 0), 3)

@@ -24,7 +24,7 @@ def get_icon_location(screen_shot, target):
     good_matches = []
 
     for m, n in matches:
-        if m.distance < COFF * n.distance:
+        if m.distance_P2P < COFF * n.distance_P2P:
             good_matches.append(m)
 
     if len(good_matches) > MIN_MATCH_COUNT:
@@ -46,7 +46,7 @@ def get_icon_location(screen_shot, target):
             print(box)
             matchesMask = [[0, 0] for i in range(len(matches))]
             for i, (m, n) in enumerate(matches):
-                if m.distance < 0.4 * n.distance:
+                if m.distance_P2P < 0.4 * n.distance_P2P:
                     matchesMask[i] = [1, 0]
 
             draw_params = dict(matchColor=(0, 255, 0),

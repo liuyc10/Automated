@@ -51,7 +51,7 @@ def abc():
 
     for i, (m, n) in enumerate(matches):
 
-        if m.distance < coff * n.distance:
+        if m.distance_P2P < coff * n.distance_P2P:
             matchesMask[i] = [1, 0]
 
     draw_params = dict(matchColor=(0, 255, 0),
@@ -93,13 +93,13 @@ def defg():
     flann = cv.FlannBasedMatcher(indexParams, searchParams)
     # 使用KNN算法实现图像匹配，并对匹配结果排序
     matches = flann.knnMatch(des1, des2, k=2)
-    matches = sorted(matches, key=lambda x: x[0].distance)
+    matches = sorted(matches, key=lambda x: x[0].distance_P2P)
 
     # 去除错误匹配，0.5是系数，系数大小不同，匹配的结果页不同
     goodMatches_1 = []
     # goodMatches_2 = []
     for m, n in matches:
-        if m.distance < 0.4 * n.distance:
+        if m.distance_P2P < 0.4 * n.distance_P2P:
             goodMatches_1.append(m)
             # goodMatches_2.append(n)
 
@@ -134,7 +134,7 @@ def defg():
 
     matchesMask = [[0, 0] for i in range(len(matches))]
     for i, (m, n) in enumerate(matches):
-        if m.distance < 0.4 * n.distance:
+        if m.distance_P2P < 0.4 * n.distance_P2P:
             matchesMask[i] = [1, 0]
 
     draw_params = dict(matchColor=(0, 255, 0),
@@ -183,7 +183,7 @@ def get_icon_location(screen_shot, target):
     good_matches = []
 
     for m, n in matches:
-        if m.distance < 0.4 * n.distance:
+        if m.distance_P2P < 0.4 * n.distance_P2P:
             good_matches.append(m)
 
     dst_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
@@ -201,7 +201,7 @@ def get_icon_location(screen_shot, target):
 
         matchesMask = [[0, 0] for i in range(len(matches))]
         for i, (m, n) in enumerate(matches):
-            if m.distance < 0.4 * n.distance:
+            if m.distance_P2P < 0.4 * n.distance_P2P:
                 matchesMask[i] = [1, 0]
 
         draw_params = dict(matchColor=(0, 255, 0),
@@ -255,6 +255,7 @@ def get_location(screen_shot, target_icon, all_texts, target_text):
 
     return extend_box(icon_location, icon_related_text_location)
 
+
 """    for line in all_texts:
         if line[1][0] == target_text:
             icon_related_text_location = line[0]
@@ -283,6 +284,5 @@ if __name__ == '__main__':
     cv.namedWindow('resultImg', cv.WINDOW_NORMAL)
     cv.imshow("resultImg", img)
     cv.waitKey()
-
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
