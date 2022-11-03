@@ -10,23 +10,63 @@ cor_left = [0, 0]
 cor_right = [1919, 0]
 
 
+def show_img(img, name='img'):
+    cv.namedWindow(name, cv.WINDOW_NORMAL)
+    cv.imshow(name, img)
+    cv.waitKey(10)
+
+
+def draw_text(img, corners, length):
+    front = cv.FONT_HERSHEY_SIMPLEX
+    color = (255, 255, 255)
+    scale = 0.5
+    thickness = 2
+
+    new_coordinate = set_offset(corners, -100)
+    top_left, top_right, bottom_right, bottom_left = new_coordinate
+    top = (top_left + top_right) / 2
+    bottom = (bottom_left + bottom_right) / 2
+    left = (top_left + bottom_left) / 2
+    right = (top_right + bottom_right) / 2
+    cv.putText(img, str(int(length[0])), top.astype(int), front, scale, color, thickness)
+    cv.putText(img, str(int(length[1])), bottom.astype(int), front, scale, color, thickness)
+    cv.putText(img, str(int(length[2])), left.astype(int), front, scale, color, thickness)
+    cv.putText(img, str(int(length[3])), right.astype(int), front, scale, color, thickness)
+
+
+def set_offset(box, offset=0):
+    new_box = box + [[offset, offset],
+                     [offset, -offset],
+                     [-offset, -offset],
+                     [-offset, offset]]
+    return new_box
+
+
+def make_mask(box, offset=0):
+    mask = np.ones((1080, 1920))
+    mask = mask * 255
+    box_w_offset = set_offset(box, offset)
+    mask = cv.fillConvexPoly(mask, box_w_offset, 0)
+    return np.uint8(mask)
+
+
 def get_line(pt0, pt1):
     y0, x0 = pt0
     y1, x1 = pt1
-    return [y1 - y0, x0 - x1, x1 * y0 - x0 * y1]
+    return np.asarray([y1 - y0, x0 - x1, x1 * y0 - x0 * y1])
 
 
 def get_perpendicular_line(pt, line):
     y, x = pt
     a, b, c = line
-    return [b, -a, a * y - b * x]
+    return np.asarray([b, -a, a * y - b * x])
 
 
 def get_parallel_line(pt, line):
     y, x = pt
     a, b, c = line
-    c = -(a*x+b*y)
-    return [a, b, c]
+    c = -(a * x + b * y)
+    return np.asarray([a, b, c])
 
 
 def get_cross_rec(cross):
@@ -35,22 +75,44 @@ def get_cross_rec(cross):
     bottom_line = get_line(cor_bottom_left, cor_bottom_right)
     left_line = get_line(cor_top_left, cor_bottom_left)
     right_line = get_line(cor_top_right, cor_bottom_right)
-    return [top_line, bottom_line, left_line, right_line]
+    return np.asarray([top_line, bottom_line, left_line, right_line])
 
 
-def get_extend_rec(corners, cross):
+def get_extend_rec(corners, cross, base_pts=0):
+    # base_pts: 0: middle of line
+    #           1: top left and bottom right
+    #           2: top right and bottom left
+
     top_left, top_right, bottom_right, bottom_left = corners
     lines = get_cross_rec(cross)
     top_line, bottom_line, left_line, right_line = lines
-    top_line_e = get_parallel_line(top_left, top_line)
-    left_line_e = get_parallel_line(top_left, left_line)
-    bottom_line_e = get_parallel_line(bottom_right, bottom_line)
-    right_line_e = get_parallel_line(bottom_right, right_line)
+
+    if base_pts == 0:
+        top_pt = (top_left + top_right) / 2
+        bottom_pt = (bottom_left + bottom_right) / 2
+        left_pt = (top_left + bottom_left) / 2
+        right_pt = (top_right + bottom_right) / 2
+    elif base_pts == 1:
+        top_pt = top_left
+        bottom_pt = bottom_right
+        left_pt = top_left
+        right_pt = bottom_right
+    else:
+        top_pt = top_right
+        bottom_pt = bottom_left
+        left_pt = bottom_left
+        right_pt = top_right
+    top_line_e = get_parallel_line(top_pt, top_line)
+    left_line_e = get_parallel_line(left_pt, left_line)
+    bottom_line_e = get_parallel_line(bottom_pt, bottom_line)
+    right_line_e = get_parallel_line(right_pt, right_line)
     cor_top_left = get_cross_pt(top_line_e, left_line_e)
     cor_top_right = get_cross_pt(top_line_e, right_line_e)
     cor_bottom_right = get_cross_pt(bottom_line_e, right_line_e)
     cor_bottom_left = get_cross_pt(bottom_line_e, left_line_e)
-    return np.asarray([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
+    extend_rec_cor = np.asarray([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
+    extend_rec_line = np.asarray([top_line_e, bottom_line_e, left_line_e, right_line_e])
+    return extend_rec_cor, extend_rec_line
 
 
 def get_cross_pt(line0, line1):
@@ -58,34 +120,21 @@ def get_cross_pt(line0, line1):
     a1, b1, c1 = line1
     y = (c1 * a0 - c0 * a1) / (b0 * a1 - b1 * a0)
     x = (c1 * b0 - c0 * b1) / (a0 * b1 - a1 * b0)
-    return [y, x]
+    return np.asarray([y, x])
+
+
+def distance_P2Ps(pt0, pts):
+    return [(pt0[0] - t[0]) ** 2 + (pt0[1] - t[1]) ** 2 for t in pts]
 
 
 def distance_P2P(pt0, pt1):
-    return [(pt0[0] - t[0]) ** 2 + (pt0[1] - t[1]) ** 2 for t in pt1]
+    return ((pt0[0] - pt1[0]) ** 2 + (pt0[1] - pt1[1]) ** 2) ** 0.5
 
 
 def distance_P2L(pt, line):
     y, x = pt
     a, b, c = line
     return abs(a * x + b * y + c) / ((a ** 2 + b ** 2) ** 0.5)
-
-
-def show_img(img, name='img'):
-    cv.namedWindow(name, cv.WINDOW_NORMAL)
-    cv.imshow(name, img)
-    cv.waitKey(10)
-
-
-def make_mask(box, offset=0):
-    mask = np.ones((1080, 1920))
-    mask = mask * 255
-    box_w_offset = box + [[offset, offset],
-                          [offset, -offset],
-                          [-offset, -offset],
-                          [-offset, offset]]
-    mask = cv.fillConvexPoly(mask, box_w_offset, 0)
-    return np.uint8(mask)
 
 
 def cal_area(pts):
@@ -112,7 +161,34 @@ def cal_central_point(pts):
                 xc += ((x1 + x0) * (y1 * x0 - y0 * x1))
                 yc += ((y1 + y0) * (y1 * x0 - y0 * x1))
                 y0, x0 = y1, x1
-            return round(yc / (6 * area)), round(xc / (6 * area))
+            return np.asarray([round(yc / (6 * area)), round(xc / (6 * area))])
+
+
+def cal_length(corners):
+    top_left, top_right, bottom_right, bottom_left = corners
+    top_length = distance_P2P(top_left, top_right)
+    bottom_length = distance_P2P(bottom_left, bottom_right)
+    left_length = distance_P2P(top_left, bottom_left)
+    right_length = distance_P2P(top_right, bottom_right)
+
+    return np.asarray([top_length, bottom_length, left_length, right_length])
+
+
+def length_calibration(corners, cross):
+    # [top_length, bottom_length, left_length, right_length]
+    corners_length = cal_length(corners)  # [top_length, bottom_length, left_length, right_length]
+    cross_length = cal_length(cross)  # [top_length, bottom_length, left_length, right_length]
+
+    cal_top_corner_length = cross_length[0] * corners_length[1] / cross_length[1]
+    cal_left_corner_length = cross_length[2] * corners_length[3] / cross_length[3]
+
+    return [cal_top_corner_length, corners_length[1], cal_left_corner_length, corners_length[3]]
+
+
+def cal_tolerance(corners_length):
+    top_bottom_tolerance = corners_length[0] - corners_length[1]
+    left_right_tolerance = corners_length[2] - corners_length[3]
+    return top_bottom_tolerance, left_right_tolerance
 
 
 def get_edges(image, mask=None):
@@ -137,10 +213,10 @@ def get_edges(image, mask=None):
     if len(contours_flat_screen) != 0:
         approx_screen = cv.approxPolyDP(np.asarray(contours_flat_screen), 10, True)
         r_approx = approx_screen.reshape(approx_screen.shape[0], 2)
-        cor_top_left = r_approx[np.asarray(distance_P2P((0, 0), r_approx)).argmin()]
-        cor_bottom_left = r_approx[np.asarray(distance_P2P((h, 0), r_approx)).argmin()]
-        cor_top_right = r_approx[np.asarray(distance_P2P((0, w), r_approx)).argmin()]
-        cor_bottom_right = r_approx[np.asarray(distance_P2P((w, h), r_approx)).argmin()]
+        cor_top_left = r_approx[np.asarray(distance_P2Ps((0, 0), r_approx)).argmin()]
+        cor_bottom_left = r_approx[np.asarray(distance_P2Ps((h, 0), r_approx)).argmin()]
+        cor_top_right = r_approx[np.asarray(distance_P2Ps((0, w), r_approx)).argmin()]
+        cor_bottom_right = r_approx[np.asarray(distance_P2Ps((w, h), r_approx)).argmin()]
         box = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
         if DEBUG:
             cv.drawContours(image, [box], -1, (255, 0, 0), 3)
@@ -177,10 +253,10 @@ def get_cross(image, mask=None):
 
     h, w, d = image.shape
 
-    cor_top_left = cross[np.asarray(distance_P2P((0, 0), cross)).argmin()]
-    cor_bottom_left = cross[np.asarray(distance_P2P((h, 0), cross)).argmin()]
-    cor_top_right = cross[np.asarray(distance_P2P((0, w), cross)).argmin()]
-    cor_bottom_right = cross[np.asarray(distance_P2P((w, h), cross)).argmin()]
+    cor_top_left = cross[np.asarray(distance_P2Ps((0, 0), cross)).argmin()]
+    cor_bottom_left = cross[np.asarray(distance_P2Ps((h, 0), cross)).argmin()]
+    cor_top_right = cross[np.asarray(distance_P2Ps((0, w), cross)).argmin()]
+    cor_bottom_right = cross[np.asarray(distance_P2Ps((w, h), cross)).argmin()]
     cor = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
 
     return cor
@@ -264,10 +340,10 @@ def use_canny(imgs):
     if len(contours_flat_screen) != 0:
         approx_screen = cv.approxPolyDP(np.asarray(contours_flat_screen), 10, True)
         r_approx = approx_screen.reshape(approx_screen.shape[0], 2)
-        cor_top_left = r_approx[np.asarray(distance_P2P((0, 0), r_approx)).argmin()]
-        cor_bottom_left = r_approx[np.asarray(distance_P2P((w, 0), r_approx)).argmin()]
-        cor_top_right = r_approx[np.asarray(distance_P2P((0, h), r_approx)).argmin()]
-        cor_bottom_right = r_approx[np.asarray(distance_P2P((w, h), r_approx)).argmin()]
+        cor_top_left = r_approx[np.asarray(distance_P2Ps((0, 0), r_approx)).argmin()]
+        cor_bottom_left = r_approx[np.asarray(distance_P2Ps((w, 0), r_approx)).argmin()]
+        cor_top_right = r_approx[np.asarray(distance_P2Ps((0, h), r_approx)).argmin()]
+        cor_bottom_right = r_approx[np.asarray(distance_P2Ps((w, h), r_approx)).argmin()]
 
         box = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
         cv.drawContours(img, [box], -1, (255, 0, 0), 3)

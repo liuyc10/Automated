@@ -61,9 +61,11 @@ def mark_corners(src, start_frame=0, frame_count=3, writer=None):
             cross_avg = cross_queue.average()
             cv.drawContours(frame, [corners_avg.astype(int)], -1, (0, 255, 0), 1)
             cv.drawContours(frame, [cross_avg.astype(int)], -1, (0, 0, 255), 1)
-            extend_cross = kc.get_extend_rec(corners_avg, cross_avg)
+            extend_cross, lines = kc.get_extend_rec(corners_avg, cross_avg)
             cv.drawContours(frame, [extend_cross.astype(int)], -1, (255, 255, 0), 1)
-
+            corners_length = kc.length_calibration(corners_avg, cross_avg)
+            tb_tolerance, lr_tolerance = kc.cal_tolerance(corners_length)
+            kc.draw_text(frame, corners, corners_length)
             cv.imshow('capture', frame)
         if cv.waitKey(1) & 0xFF == ord('q'):
             src.release()
@@ -148,12 +150,12 @@ def mark_focus(src, writer=None):
 
 
 if __name__ == '__main__':
-    source = 'live'
+    # source = 'live'
     # source = './res/WIN_20220810_16_46_23_Pro.mp4'
     # source = './res/WIN_20221018_16_15_15_Pro.mp4'
     # source = r'D:\development\WIN_20221024_11_09_10_Pro.mp4'
     # source = './res/WIN_20221031_11_21_21_Pro.mp4'
-    # source = './res/WIN_20221101_11_25_17_Pro.mp4'
+    source = './res/WIN_20221101_11_25_17_Pro.mp4'
     cap = get_video(source)
     data_writer = None
     # data_writer = DataWriter('./data/data.xlsx')
