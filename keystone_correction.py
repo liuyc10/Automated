@@ -44,7 +44,10 @@ def draw_tolerance(img, corners, extend_rac_lines, offset=-50):
                         cal_get_perpendicular_line_length(bottom_left, bottom_line_e)]
     x_offset_coordinate = set_offset(corners, offset=offset, axis=0)
     for length, coordinate in zip(v_tolerance_list, x_offset_coordinate):
-        draw_text(img, str(int(length)), coordinate)
+        if length:
+            draw_text(img, str(round(length, 2)), coordinate)
+        else:
+            draw_text(img, 'None', coordinate)
     h_tolerance_list = [cal_get_perpendicular_line_length(top_left, left_line_e),
                         cal_get_perpendicular_line_length(top_right, right_line_e),
                         cal_get_perpendicular_line_length(bottom_right, right_line_e),
@@ -190,12 +193,13 @@ def cal_area(pts):
 
 def cal_central_point(pts):
     if len(pts) < 3:
-        return np.uint8((pts[0] + pts[-1]) / 2)
+        # return np.uint8((pts[0] + pts[-1]) / 2)
+        return None, None
     else:
         area = cal_area(pts)
 
-        if area == 0.0:
-            return None
+        if abs(area) < 750 or abs(area) > 1250:
+            return None, None
         else:
             xc, yc = 0.0, 0.0
             x0, y0 = pts[-1]
@@ -203,7 +207,7 @@ def cal_central_point(pts):
                 xc += ((x1 + x0) * (y1 * x0 - y0 * x1))
                 yc += ((y1 + y0) * (y1 * x0 - y0 * x1))
                 y0, x0 = y1, x1
-            return np.asarray([round(xc / (6 * area)), round(yc / (6 * area))])
+            return np.asarray([xc / (6 * area), yc / (6 * area)])
 
 
 def cal_length(corners):
@@ -282,17 +286,20 @@ def get_cross(image, mask=None):
     contours_screen, _ = cv.findContours(canny_screen, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     if DEBUG:
         cv.drawContours(image, contours_screen, -1, (0, 255, 0), 1)
-    if len(contours_screen) != 4:
+    if len(contours_screen) < 4:
         return None
     for contour in contours_screen:
         c_x, c_y = cal_central_point(contour.reshape(contour.shape[0], 2))
         if c_x is None:
-            return None
+            continue
         cross.append([c_x, c_y])
         if DEBUG:
-            cv.circle(image, (c_x, c_y), 1, (0, 0, 255), -1)
+            cv.circle(image, (round(c_x), round(c_y)), 1, (0, 0, 255), -1)
     if DEBUG:
         show_img(image, 'none')
+
+    if len(cross) < 4:
+        return None
 
     h, w, d = image.shape
 

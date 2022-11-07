@@ -8,6 +8,12 @@ import keystone_correction as kc
 from tools import DataWriter
 
 
+writer = False
+use_avg = False
+tolerance_calculation = True
+max_number = 0
+
+
 def get_video(src):
     if src == 'live':
         v = cv.VideoCapture(0, cv.CAP_DSHOW)
@@ -35,48 +41,72 @@ def video_show(src):
 def mark_corners(src, start_frame=0, frame_count=3, writer=None):
     boxes = []
     sleep(5)
+    frame_path_list = []
     corners_queue = CoordinateQueue(frame_count)
     cross_queue = CoordinateQueue(frame_count)
     frame_no = 0
     while src.isOpened():
-        ret, frame = src.read()
-
+        ret, frame_org = src.read()
+        frame = frame_org.copy()
         if frame is None:
             src.release()
             if writer is not None:
-                writer.write_dataset(boxes)
+                writer.write_dataset(zip(frame_path_list, boxes))
                 writer.save()
             break
 
         if frame_no < start_frame:
             frame_no += 1
             continue
-
+        frame_no += 1
         corners = kc.get_edges(frame.copy())
         if corners is not None:
-            cross = kc.get_cross(frame.copy(), kc.make_mask(corners, 10))
-            if cross is not None:
-                corners_queue.push(corners)
-                cross_queue.push(cross)
-                corners_avg = corners_queue.average()
-                cross_avg = cross_queue.average()
-                cv.drawContours(frame, [corners_avg.astype(int)], -1, (0, 255, 0), 1)
-                cv.drawContours(frame, [cross_avg.astype(int)], -1, (0, 0, 255), 1)
-                extend_cross, lines = kc.get_extend_rec(corners_avg, cross_avg)
-                cv.drawContours(frame, [extend_cross.astype(int)], -1, (255, 255, 0), 1)
-                cross_length = kc.cal_length(cross_avg)
-                kc.draw_side_length(frame, cross_avg, cross_length)
-                org_corners_length = kc.cal_length(corners_avg)
-                kc.draw_side_length(frame, corners, org_corners_length)
-                cal_corners_length = kc.length_calibration(corners_avg, cross_avg)
-                # tb_tolerance, lr_tolerance = kc.cal_tolerance(corners_length)
-                kc.draw_side_length(frame, corners, cal_corners_length, -100)
-                kc.draw_tolerance(frame, corners, lines)
-                cv.imshow('capture', frame)
+            corners_avg = corners
+            if tolerance_calculation:
+                cross = kc.get_cross(frame.copy(), kc.make_mask(corners, 10))
+                if cross is not None:
+                    if use_avg:
+                        corners_queue.push(corners)
+                        cross_queue.push(cross)
+                        corners_avg = corners_queue.average()
+                        cross_avg = cross_queue.average()
+                    else:
+                        cross_avg = cross
+                    cv.drawContours(frame, [corners_avg.astype(int)], -1, (0, 255, 0), 1)
+                    cv.drawContours(frame, [cross_avg.astype(int)], -1, (0, 0, 255), 1)
+                    extend_cross, lines = kc.get_extend_rec(corners_avg, cross_avg)
+                    cv.drawContours(frame, [extend_cross.astype(int)], -1, (255, 255, 0), 1)
+                    cross_length = kc.cal_length(cross_avg)
+                    kc.draw_side_length(frame, cross_avg, cross_length)
+                    org_corners_length = kc.cal_length(corners_avg)
+                    kc.draw_side_length(frame, corners, org_corners_length)
+                    cal_corners_length = kc.length_calibration(corners_avg, cross_avg)
+                    # tb_tolerance, lr_tolerance = kc.cal_tolerance(corners_length)
+                    kc.draw_side_length(frame, corners, cal_corners_length, -150)
+                    kc.draw_tolerance(frame, corners, lines)
+                    cv.imshow('capture', frame)
+
+            if writer is not None:
+                path = './data/' + str(frame_no) + '.jpg'
+                boxes.append(corners)
+                cv.imwrite(path, frame_org)
+                # print(path + '      ' + str(result))
+                frame_path_list.append(path)
+
         if cv.waitKey(1) & 0xFF == ord('q'):
             src.release()
             if writer is not None:
-                writer.write_dataset(boxes)
+                writer.write_dataset(zip(frame_path_list, boxes))
+                writer.save()
+            break
+
+        if max_number == 0:
+            continue
+
+        if frame_no > max_number:
+            src.release()
+            if writer is not None:
+                writer.write_dataset(zip(frame_path_list, boxes))
                 writer.save()
             break
 
@@ -114,8 +144,9 @@ def mark_corners_org(src, start_frame=0, writer=None):
         if input_str == ord('y'):
             path = './data/' + str(frame_no) + '.jpg'
             boxes.append(corners)
-            cv.imwrite(path, frame)
-            frame_list.append(path)
+            result = cv.imwrite(path, frame)
+            if result:
+                frame_list.append(path)
             frame_no += 1
         elif input_str == ord('n'):
             frame_no += 1
@@ -162,9 +193,13 @@ if __name__ == '__main__':
     # source = r'D:\development\WIN_20221024_11_09_10_Pro.mp4'
     # source = './res/WIN_20221031_11_21_21_Pro.mp4'
     # source = './res/WIN_20221101_11_25_17_Pro.mp4'
+
     cap = get_video(source)
-    data_writer = None
-    # data_writer = DataWriter('./data/data.xlsx')
+
+    if writer:
+        data_writer = DataWriter('./data/data.xlsx')
+    else:
+        data_writer = None
     try:
         # for i in range(5, 19, 2):
         # mark_corners_org(cap, writer=data_writer)
@@ -173,7 +208,7 @@ if __name__ == '__main__':
         #    print(ex)
         #    cap.release()
 
-        mark_corners(cap, frame_count=5)
+        mark_corners(cap, frame_count=5, writer=data_writer)
 
     finally:
         cap.release()
