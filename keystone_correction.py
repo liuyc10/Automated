@@ -16,54 +16,96 @@ def show_img(img, name='img'):
     cv.waitKey(10)
 
 
-def draw_text(img, corners, length):
-    front = cv.FONT_HERSHEY_SIMPLEX
-    color = (255, 255, 255)
-    scale = 0.5
-    thickness = 2
+def draw_text(img, text, coordinate, front=cv.FONT_HERSHEY_SIMPLEX, scale=0.5, color=(255, 255, 255), thickness=2):
+    cv.putText(img, text, coordinate.astype(int), front, scale, color, thickness)
 
-    new_coordinate = set_offset(corners, -100)
+
+def draw_side_length(img, corners, side_length, offset=-50):
+    new_coordinate = set_offset(corners, offset)
     top_left, top_right, bottom_right, bottom_left = new_coordinate
     top = (top_left + top_right) / 2
     bottom = (bottom_left + bottom_right) / 2
     left = (top_left + bottom_left) / 2
     right = (top_right + bottom_right) / 2
-    cv.putText(img, str(int(length[0])), top.astype(int), front, scale, color, thickness)
-    cv.putText(img, str(int(length[1])), bottom.astype(int), front, scale, color, thickness)
-    cv.putText(img, str(int(length[2])), left.astype(int), front, scale, color, thickness)
-    cv.putText(img, str(int(length[3])), right.astype(int), front, scale, color, thickness)
+    for length, coordinate in zip(side_length, [top, bottom, left, right]):
+        if length:
+            draw_text(img, str(round(length, 2)), coordinate)
+        else:
+            draw_text(img, 'unknown', coordinate)
 
 
-def set_offset(box, offset=0):
-    new_box = box + [[offset, offset],
-                     [offset, -offset],
-                     [-offset, -offset],
-                     [-offset, offset]]
-    return new_box
+def draw_tolerance(img, corners, extend_rac_lines, offset=-50):
+
+    top_left, top_right, bottom_right, bottom_left = corners
+    top_line_e, bottom_line_e, left_line_e, right_line_e = extend_rac_lines
+    v_tolerance_list = [cal_get_perpendicular_line_length(top_left, top_line_e),
+                        cal_get_perpendicular_line_length(top_right, top_line_e),
+                        cal_get_perpendicular_line_length(bottom_right, bottom_line_e),
+                        cal_get_perpendicular_line_length(bottom_left, bottom_line_e)]
+    x_offset_coordinate = set_offset(corners, offset=offset, axis=0)
+    for length, coordinate in zip(v_tolerance_list, x_offset_coordinate):
+        draw_text(img, str(int(length)), coordinate)
+    h_tolerance_list = [cal_get_perpendicular_line_length(top_left, left_line_e),
+                        cal_get_perpendicular_line_length(top_right, right_line_e),
+                        cal_get_perpendicular_line_length(bottom_right, right_line_e),
+                        cal_get_perpendicular_line_length(bottom_left, left_line_e)]
+    y_offset_coordinate = set_offset(corners, offset=offset, axis=1)
+    for length, coordinate in zip(h_tolerance_list, y_offset_coordinate):
+        if length:
+            draw_text(img, str(round(length, 2)), coordinate)
+        else:
+            draw_text(img, 'unknown', coordinate)
+
+
+def set_offset(box, offset=0, axis=2):  # axis: 1: x axis outside; 2: y axis outside; 3: x and y axis outside
+
+    if axis == 0:
+        return box + [[offset, 0],
+                      [-offset, 0],
+                      [-offset, 0],
+                      [offset, 0]]
+    elif axis == 1:
+        return box + [[0, offset],
+                      [0, offset],
+                      [0, -offset],
+                      [0, -offset]]
+    elif axis == 2:
+        return box + [[offset, offset],
+                      [-offset, offset],
+                      [-offset, -offset],
+                      [offset, -offset]]
+    else:
+        return None
 
 
 def make_mask(box, offset=0):
     mask = np.ones((1080, 1920))
     mask = mask * 255
-    box_w_offset = set_offset(box, offset)
+    box_w_offset = set_offset(box, offset, axis=2)
     mask = cv.fillConvexPoly(mask, box_w_offset, 0)
     return np.uint8(mask)
 
 
 def get_line(pt0, pt1):
-    y0, x0 = pt0
-    y1, x1 = pt1
+    x0, y0 = pt0
+    x1, y1 = pt1
     return np.asarray([y1 - y0, x0 - x1, x1 * y0 - x0 * y1])
 
 
 def get_perpendicular_line(pt, line):
-    y, x = pt
+    x, y = pt
     a, b, c = line
     return np.asarray([b, -a, a * y - b * x])
 
 
+def cal_get_perpendicular_line_length(pt, line):
+    perpendicular_line = get_perpendicular_line(pt, line)
+    cross_pt = get_cross_pt(line, perpendicular_line)
+    return distance_P2P(pt, cross_pt)
+
+
 def get_parallel_line(pt, line):
-    y, x = pt
+    x, y = pt
     a, b, c = line
     c = -(a * x + b * y)
     return np.asarray([a, b, c])
@@ -120,7 +162,7 @@ def get_cross_pt(line0, line1):
     a1, b1, c1 = line1
     y = (c1 * a0 - c0 * a1) / (b0 * a1 - b1 * a0)
     x = (c1 * b0 - c0 * b1) / (a0 * b1 - a1 * b0)
-    return np.asarray([y, x])
+    return np.asarray([x, y])
 
 
 def distance_P2Ps(pt0, pts):
@@ -132,18 +174,18 @@ def distance_P2P(pt0, pt1):
 
 
 def distance_P2L(pt, line):
-    y, x = pt
+    x, y = pt
     a, b, c = line
     return abs(a * x + b * y + c) / ((a ** 2 + b ** 2) ** 0.5)
 
 
 def cal_area(pts):
     area = 0.0
-    y0, x0 = pts[-1]
-    for y1, x1 in pts:
+    x0, y0 = pts[-1]
+    for x1, y1 in pts:
         area += (y1 * x0 - x1 * y0)
         y0, x0 = y1, x1
-    return abs(area) / 2
+    return area / 2
 
 
 def cal_central_point(pts):
@@ -153,15 +195,15 @@ def cal_central_point(pts):
         area = cal_area(pts)
 
         if area == 0.0:
-            return None, None
+            return None
         else:
-            yc, xc = 0.0, 0.0
-            y0, x0 = pts[-1]
-            for y1, x1 in pts:
+            xc, yc = 0.0, 0.0
+            x0, y0 = pts[-1]
+            for x1, y1 in pts:
                 xc += ((x1 + x0) * (y1 * x0 - y0 * x1))
                 yc += ((y1 + y0) * (y1 * x0 - y0 * x1))
                 y0, x0 = y1, x1
-            return np.asarray([round(yc / (6 * area)), round(xc / (6 * area))])
+            return np.asarray([round(xc / (6 * area)), round(yc / (6 * area))])
 
 
 def cal_length(corners):
@@ -195,7 +237,7 @@ def get_edges(image, mask=None):
     global GAUSS, THRESHOLD2, THRESHOLD1, DEBUG, cor_right, cor_left
     box = []
     gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    r, threshold_screen = cv.threshold(gray.copy(), 100, 255, cv.THRESH_BINARY)
+    r, threshold_screen = cv.threshold(gray.copy(), 80, 255, cv.THRESH_BINARY)
     if DEBUG:
         show_img(threshold_screen)
     blur_screen = cv.GaussianBlur(threshold_screen, (GAUSS, GAUSS), 0)
@@ -214,8 +256,8 @@ def get_edges(image, mask=None):
         approx_screen = cv.approxPolyDP(np.asarray(contours_flat_screen), 10, True)
         r_approx = approx_screen.reshape(approx_screen.shape[0], 2)
         cor_top_left = r_approx[np.asarray(distance_P2Ps((0, 0), r_approx)).argmin()]
-        cor_bottom_left = r_approx[np.asarray(distance_P2Ps((h, 0), r_approx)).argmin()]
-        cor_top_right = r_approx[np.asarray(distance_P2Ps((0, w), r_approx)).argmin()]
+        cor_bottom_left = r_approx[np.asarray(distance_P2Ps((0, h), r_approx)).argmin()]
+        cor_top_right = r_approx[np.asarray(distance_P2Ps((w, 0), r_approx)).argmin()]
         cor_bottom_right = r_approx[np.asarray(distance_P2Ps((w, h), r_approx)).argmin()]
         box = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
         if DEBUG:
@@ -230,7 +272,7 @@ def get_cross(image, mask=None):
     cross = []
     gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
     gray_w_mask = cv.bitwise_or(gray.copy(), mask)
-    r, threshold_screen = cv.threshold(gray_w_mask, 120, 255, cv.THRESH_BINARY_INV)
+    r, threshold_screen = cv.threshold(gray_w_mask, 100, 255, cv.THRESH_BINARY_INV)
     if DEBUG:
         show_img(threshold_screen, 'cross')
     blur_screen = cv.GaussianBlur(threshold_screen, (GAUSS, GAUSS), 0)
@@ -238,24 +280,25 @@ def get_cross(image, mask=None):
     # if DEBUG:
     #    show_img(canny_screen)
     contours_screen, _ = cv.findContours(canny_screen, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-    if len(contours_screen) < 4:
+    if DEBUG:
+        cv.drawContours(image, contours_screen, -1, (0, 255, 0), 1)
+    if len(contours_screen) != 4:
         return None
     for contour in contours_screen:
-        c_y, c_x = cal_central_point(contour.reshape(contour.shape[0], 2))
-        if c_y is None:
+        c_x, c_y = cal_central_point(contour.reshape(contour.shape[0], 2))
+        if c_x is None:
             return None
-        cross.append([c_y, c_x])
+        cross.append([c_x, c_y])
         if DEBUG:
-            cv.drawContours(image, contours_screen, -1, (0, 255, 0), 1)
-            cv.circle(image, (c_y, c_x), 1, (0, 0, 255), -1)
+            cv.circle(image, (c_x, c_y), 1, (0, 0, 255), -1)
     if DEBUG:
         show_img(image, 'none')
 
     h, w, d = image.shape
 
     cor_top_left = cross[np.asarray(distance_P2Ps((0, 0), cross)).argmin()]
-    cor_bottom_left = cross[np.asarray(distance_P2Ps((h, 0), cross)).argmin()]
-    cor_top_right = cross[np.asarray(distance_P2Ps((0, w), cross)).argmin()]
+    cor_bottom_left = cross[np.asarray(distance_P2Ps((0, h), cross)).argmin()]
+    cor_top_right = cross[np.asarray(distance_P2Ps((w, 0), cross)).argmin()]
     cor_bottom_right = cross[np.asarray(distance_P2Ps((w, h), cross)).argmin()]
     cor = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
 

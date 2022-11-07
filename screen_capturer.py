@@ -53,7 +53,7 @@ def mark_corners(src, start_frame=0, frame_count=3, writer=None):
             continue
 
         corners = kc.get_edges(frame.copy())
-        cross = kc.get_cross(frame.copy(), kc.make_mask(corners, 5))
+        cross = kc.get_cross(frame.copy(), kc.make_mask(corners, 10))
         if corners is not None and cross is not None:
             corners_queue.push(corners)
             cross_queue.push(cross)
@@ -63,9 +63,14 @@ def mark_corners(src, start_frame=0, frame_count=3, writer=None):
             cv.drawContours(frame, [cross_avg.astype(int)], -1, (0, 0, 255), 1)
             extend_cross, lines = kc.get_extend_rec(corners_avg, cross_avg)
             cv.drawContours(frame, [extend_cross.astype(int)], -1, (255, 255, 0), 1)
-            corners_length = kc.length_calibration(corners_avg, cross_avg)
-            tb_tolerance, lr_tolerance = kc.cal_tolerance(corners_length)
-            kc.draw_text(frame, corners, corners_length)
+            cross_length = kc.cal_length(cross_avg)
+            kc.draw_side_length(frame, cross_avg, cross_length)
+            org_corners_length = kc.cal_length(corners_avg)
+            kc.draw_side_length(frame, corners, org_corners_length)
+            cal_corners_length = kc.length_calibration(corners_avg, cross_avg)
+            # tb_tolerance, lr_tolerance = kc.cal_tolerance(corners_length)
+            kc.draw_side_length(frame, corners, cal_corners_length, -200)
+            kc.draw_tolerance(frame, corners, lines)
             cv.imshow('capture', frame)
         if cv.waitKey(1) & 0xFF == ord('q'):
             src.release()
@@ -150,12 +155,12 @@ def mark_focus(src, writer=None):
 
 
 if __name__ == '__main__':
-    # source = 'live'
+    source = 'live'
     # source = './res/WIN_20220810_16_46_23_Pro.mp4'
     # source = './res/WIN_20221018_16_15_15_Pro.mp4'
     # source = r'D:\development\WIN_20221024_11_09_10_Pro.mp4'
     # source = './res/WIN_20221031_11_21_21_Pro.mp4'
-    source = './res/WIN_20221101_11_25_17_Pro.mp4'
+    # source = './res/WIN_20221101_11_25_17_Pro.mp4'
     cap = get_video(source)
     data_writer = None
     # data_writer = DataWriter('./data/data.xlsx')
