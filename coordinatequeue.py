@@ -23,3 +23,6 @@ class CoordinateQueue(object):
         avg = np.sum(npl, axis=0)/len(self.__list)
         return avg
 
+    def difference(self):
+        raise NotImplementedError
+

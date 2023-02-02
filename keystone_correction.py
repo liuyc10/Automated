@@ -81,8 +81,8 @@ def set_offset(box, offset=0, axis=2):  # axis: 1: x axis outside; 2: y axis out
         return None
 
 
-def make_mask(box, offset=0):
-    mask = np.ones((1080, 1920))
+def make_mask(box, resolution, offset=0):
+    mask = np.ones(resolution)
     mask = mask * 255
     box_w_offset = set_offset(box, offset, axis=2)
     mask = cv.fillConvexPoly(mask, box_w_offset, 0)
@@ -241,7 +241,8 @@ def get_edges(image, mask=None):
     global GAUSS, THRESHOLD2, THRESHOLD1, DEBUG, cor_right, cor_left
     box = []
     gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    r, threshold_screen = cv.threshold(gray.copy(), 80, 255, cv.THRESH_BINARY)
+    blur_gray = cv.GaussianBlur(gray.copy(), (GAUSS, GAUSS), 0)
+    r, threshold_screen = cv.threshold(blur_gray, 80, 255, cv.THRESH_BINARY)
     if DEBUG:
         show_img(threshold_screen)
     blur_screen = cv.GaussianBlur(threshold_screen, (GAUSS, GAUSS), 0)

@@ -5,7 +5,7 @@
 import cv2 as cv
 import numpy as np
 from matplotlib import pyplot as plt
-from paddleocr import PaddleOCR, draw_ocr
+# from paddleocr import PaddleOCR, draw_ocr
 from PIL import Image
 
 debug = True
