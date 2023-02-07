@@ -5,7 +5,7 @@ import cv2 as cv
 DEBUG = True
 minimum = 0
 maximum = 1
-part_limits = {'pan':(-168, 168),
+part_limits = {'pan': (-168, 168),
                'tilt': (-30, 90),
                'zoom': (0, 16384)}
 
@@ -161,15 +161,26 @@ VideoCapturePropertiesName_abbr = {'width': cv.CAP_PROP_FRAME_WIDTH,
 class Camera(object):
 
     def __init__(self, **kwargs):
+
         self.v = cv.VideoCapture(0, cv.CAP_DSHOW)
         self.default_properties = self.supported_properties()
         self.properties = self.default_properties.copy()
-        self.set_properties(kwargs)
+
+        if kwargs:
+            self.set_properties(kwargs)
+
+    def height(self):
+        return self.properties[VideoCapturePropertiesName_abbr['height']]
+
+    def width(self):
+        return self.properties[VideoCapturePropertiesName_abbr['width']]
 
     def isOpened(self):
         return self.v.isOpened()
 
-    def read(self):
+    def read(self, skip_df=True):
+        if skip_df:
+            self.v.read()       # skip duplicate frame
         return self.v.read()
 
     def release(self):
@@ -182,13 +193,13 @@ class Camera(object):
         f = None
         while skip_count > 0:
             if self.v.isOpened():
-                r, f = self.v.read()
+                r, f = self.v.read(False)
                 skip_count -= 1
             else:
                 print('camera disconnected')
                 break
         end = datetime.datetime.now()
-        print('skipped {} sec'.format((end-start).seconds))
+        print('skipped {} sec'.format((end - start).seconds))
         return f
 
     def set_properties(self, kwargs):

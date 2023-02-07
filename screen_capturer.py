@@ -3,7 +3,7 @@ from time import sleep
 import cv2 as cv
 import numpy as np
 
-from camera_control import Camera
+from camera import Camera
 from coordinatequeue import CoordinateQueue
 
 import keystone_correction as kc
