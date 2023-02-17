@@ -6,7 +6,7 @@ import numpy as np
 from camera import Camera
 from coordinatequeue import CoordinateQueue
 
-import keystone_correction as kc
+import keystone_correction_legacy as kc_legacy
 from tools import DataWriter
 
 writer = False
@@ -66,7 +66,7 @@ def targeting_corner(src, shape, index, current_coordinate):
     if abs(y_offset) > 500:
         src.tilt_control(-y_offset // 47)
     new_frame = src.skip(3)
-    coordinate = kc.get_edges(new_frame.copy())[index]
+    coordinate = kc_legacy.get_edges(new_frame.copy())[index]
     x_offset = coordinate[0] - w / 2
     y_offset = coordinate[1] - h / 2
 
@@ -80,7 +80,7 @@ def targeting_corner(src, shape, index, current_coordinate):
         if abs(y_offset) > 50:
             src.tilt_control(-y_offset / (abs(y_offset) * 2))
         new_frame = src.skip(0.1)
-        coordinate = kc.get_edges(new_frame.copy())[index]
+        coordinate = kc_legacy.get_edges(new_frame.copy())[index]
         cv.circle(new_frame, coordinate, 10, (255, 255, 255), 5)
         cv.imshow('capture', new_frame)
         cv.waitKey(10)
@@ -99,7 +99,7 @@ def focus_on_corner_x(src, frame, index, current_coordinate):
         src.pan_control(x_offset // 47)
         sleep(2)
         ret, new_frame = src.read()
-        coordinate = kc.get_edges(new_frame.copy())[index]
+        coordinate = kc_legacy.get_edges(new_frame.copy())[index]
         cv.circle(new_frame, coordinate, 10, (255, 255, 255), 5)
         cv.imshow('capture', new_frame)
         cv.waitKey()
@@ -109,7 +109,7 @@ def focus_on_corner_x(src, frame, index, current_coordinate):
         src.pan_control(x_offset / (abs(x_offset) * 2))
         ret, new_frame = src.read()
 
-        coordinate = kc.get_edges(new_frame.copy())[index]
+        coordinate = kc_legacy.get_edges(new_frame.copy())[index]
 
         cv.circle(new_frame, coordinate, 10, (255, 255, 255), 5)
         cv.imshow('capture', new_frame)
@@ -130,7 +130,7 @@ def focus_on_corner_y(src, frame, index, current_coordinate):
         sleep(2)
         ret, new_frame = src.read()
         cv.imshow('capture', new_frame)
-        corners = kc.get_edges(new_frame)
+        corners = kc_legacy.get_edges(new_frame)
         y_offset = corners[index][1] - h / 2
     cv.waitKey()
     if abs(y_offset) > 50:
@@ -138,7 +138,7 @@ def focus_on_corner_y(src, frame, index, current_coordinate):
 
         ret, new_frame = src.read()
         cv.imshow('capture', frame)
-        corners = kc.get_edges(new_frame)
+        corners = kc_legacy.get_edges(new_frame)
         focus_on_corner_y(src, new_frame, index, corners[index])
 
     else:
@@ -166,11 +166,11 @@ def mark_corners(src, start_frame=0, frame_count=3, writer=None):
             frame_no += 1
             continue
         frame_no += 1
-        corners = kc.get_edges(frame.copy())
+        corners = kc_legacy.get_edges(frame.copy())
         if corners is not None:
             corners_avg = corners
             if tolerance_calculation:
-                cross = kc.get_cross(frame.copy(), kc.make_mask(corners, tuple(frame.shape[:2]), 10))
+                cross = kc_legacy.get_cross(frame.copy(), kc_legacy.make_mask(corners, tuple(frame.shape[:2]), 10))
                 if cross is not None:
                     if use_avg:
                         corners_queue.push(corners)
@@ -181,16 +181,16 @@ def mark_corners(src, start_frame=0, frame_count=3, writer=None):
                         cross_avg = cross
                     cv.drawContours(frame, [corners_avg.astype(int)], -1, (0, 255, 0), 1)
                     cv.drawContours(frame, [cross_avg.astype(int)], -1, (0, 0, 255), 1)
-                    extend_cross, lines = kc.get_extend_rec(corners_avg, cross_avg)
+                    extend_cross, lines = kc_legacy.get_extend_rec(corners_avg, cross_avg)
                     cv.drawContours(frame, [extend_cross.astype(int)], -1, (255, 255, 0), 1)
-                    cross_length = kc.cal_length(cross_avg)
-                    kc.draw_side_length(frame, cross_avg, cross_length)
-                    org_corners_length = kc.cal_length(corners_avg)
-                    kc.draw_side_length(frame, corners, org_corners_length)
-                    cal_corners_length = kc.length_calibration(corners_avg, cross_avg)
+                    cross_length = kc_legacy.cal_length(cross_avg)
+                    kc_legacy.draw_side_length(frame, cross_avg, cross_length)
+                    org_corners_length = kc_legacy.cal_length(corners_avg)
+                    kc_legacy.draw_side_length(frame, corners, org_corners_length)
+                    cal_corners_length = kc_legacy.length_calibration(corners_avg, cross_avg)
                     # tb_tolerance, lr_tolerance = kc.cal_tolerance(corners_length)
-                    kc.draw_side_length(frame, corners, cal_corners_length, -150)
-                    kc.draw_tolerance(frame, corners, lines)
+                    kc_legacy.draw_side_length(frame, corners, cal_corners_length, -150)
+                    kc_legacy.draw_tolerance(frame, corners, lines)
                     cv.imshow('capture', frame)
 
             if writer is not None:
@@ -244,9 +244,9 @@ def mark_corners_org(src, start_frame=0, writer=None):
         # mask[540:, :] = 255
         # new_frame, corners = kc.get_edges(frames, mask=mask)
 
-        new_frame, corners = kc.get_edges(frame.copy())
+        new_frame, corners = kc_legacy.get_edges(frame.copy())
         cv.imshow('capture', new_frame)
-        _, cross = kc.get_cross(frame.copy(), kc.make_mask(corners, 5))
+        _, cross = kc_legacy.get_cross(frame.copy(), kc_legacy.make_mask(corners, 5))
         input_str = cv.waitKey(1)
         if input_str == ord('y'):
             path = './data/' + str(frame_no) + '.jpg'
@@ -289,7 +289,7 @@ def mark_focus(src, writer=None):
                 writer.save()
             break
 
-        corners = kc.get_edges(frame.copy())
+        corners = kc_legacy.get_edges(frame.copy())
 
         cv.imshow('capture', frame)
         cv.waitKey(10)
@@ -355,7 +355,7 @@ def t(src):
         if frame is None:
             src.release()
             break
-        corners = kc.get_edges(frame.copy())
+        corners = kc_legacy.get_edges(frame.copy())
         if corners is None:
             continue
         cv.drawContours(frame, [corners], -1, (0, 255, 0), 1)
@@ -386,8 +386,8 @@ if __name__ == '__main__':
         # except Exception as ex:
         #    print(ex)
         #    cap.release()
-        mark_focus(cap)
-        # mark_corners(cap, frame_count=5, writer=data_writer)
+        # mark_focus(cap)
+        mark_corners(cap, frame_count=5, writer=data_writer)
         # t(cap)
 
     finally:

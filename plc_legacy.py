@@ -106,8 +106,6 @@ def add_TimeStamp(image, ts, coordinates):
                        (255, 0, 255), 2)
 
 
-
-
 if __name__ == '__main__':
     # source = 'live'
     # source = './res/WIN_20220810_16_46_23_Pro.mp4'

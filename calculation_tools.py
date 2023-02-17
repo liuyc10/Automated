@@ -1,4 +1,5 @@
 import numpy as np
+from cv2 import moments
 
 
 def distance_P2Ps(pt0, pts):
@@ -28,6 +29,19 @@ def cal_central_point(pts):
     if len(pts) < 3:
         return np.uint8((pts[0] + pts[-1]) / 2)
     else:
+        m = moments(pts)
+        if m['m00'] == 0.0:
+            return np.median(pts, axis=0)
+        cx = m['m10'] / m['m00']
+        cy = m['m01'] / m['m00']
+    return cx, cy
+
+
+'''
+def cal_central_point(pts):
+    if len(pts) < 3:
+        return np.uint8((pts[0] + pts[-1]) / 2)
+    else:
         area = cal_area(pts)
         xc, yc = 0.0, 0.0
         x0, y0 = pts[-1]
@@ -36,6 +50,7 @@ def cal_central_point(pts):
             yc += ((y1 + y0) * (y1 * x0 - y0 * x1))
             y0, x0 = y1, x1
         return np.asarray([xc / (6 * area), yc / (6 * area)])
+'''
 
 
 def get_line(pt0, pt1):

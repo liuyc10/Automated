@@ -207,7 +207,9 @@ class Camera(object):
             p = VideoCapturePropertiesName_abbr[key]
             if p in self.properties:
                 self.v.set(p, value)
-                self.properties[p] = self.v.get(p)
+                self.properties[p] = value
+                print('{} has been set to {}'.format(p, value))
+
             else:
                 print("This camera doesn't support {} control".format(key))
 
