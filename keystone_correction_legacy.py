@@ -414,19 +414,19 @@ def use_canny(imgs):
 def use_SIFT(screen_shot, icon):
     return ld.get_location(screen_shot, icon)
 
+#
+# src = './res/kc1_test_0.jpg'
+# tar = './res/KC1.jpg'
+#
+# # use_canny(src)
+# # for i in range(5):
+# # src = './res/kc_test_' + str(i) + '.jpg'
+#
+# img = cv.imread(src)
+#
+# location = use_SIFT(src, tar)
+# cv.drawContours(img, [location], -1, (0, 255, 0), 3)
+# cv.namedWindow('img', cv.WINDOW_NORMAL)
+# cv.imshow('img', img)
+# cv.waitKey()
 
-"""src = './res/kc1_test_0.jpg'
-tar = './res/KC1.jpg'
-
-use_canny(src)
-# for i in range(5):
-# src = './res/kc_test_' + str(i) + '.jpg'
-
-img = cv.imread(src)
-
-location = use_SIFT(src, tar)
-cv.drawContours(img, [location], -1, (0, 255, 0), 3)
-cv.namedWindow('img', cv.WINDOW_NORMAL)
-cv.imshow('img', img)
-cv.waitKey()
-"""

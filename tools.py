@@ -1,8 +1,9 @@
 import datetime
 import time
 
-import xlwings as xw
+
 from pathlib import Path
+from datetime import datetime
 
 
 class DataWriter:
@@ -203,3 +204,15 @@ def write_to_file(data_set, path):
     else:
         wb = app.books.open(path)
         sht = wb.sheets.add(str(datetime.datetime.now()))
+
+
+def time(full=True):
+    t = datetime.now()
+    if full:
+        return '{}{}{}_{}{}{}{}'.format(t.year, t.month, t.day,
+                                        t.hour, t.minute, t.second,
+                                        t.microsecond if len(str(t.microsecond)) == 6 else '0' + str(
+                                            t.microsecond))
+    else:
+        return '{}{}{}_{}_{}_{}'.format(t.year, t.month, t.day, t.hour, t.minute, t.second)
+

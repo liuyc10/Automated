@@ -1,6 +1,9 @@
 import datetime
 
 import cv2 as cv
+import numpy as np
+
+from calculation_tools import cal_area
 
 DEBUG = True
 minimum = 0
@@ -160,14 +163,18 @@ VideoCapturePropertiesName_abbr = {'width': cv.CAP_PROP_FRAME_WIDTH,
 
 class Camera(object):
 
-    def __init__(self, **kwargs):
+    def __init__(self, camera_no=0, **kwargs):
 
-        self.v = cv.VideoCapture(0, cv.CAP_DSHOW)
+        self.v = cv.VideoCapture(camera_no, cv.CAP_DSHOW)
         self.default_properties = self.supported_properties()
         self.properties = self.default_properties.copy()
 
         if kwargs:
             self.set_properties(kwargs)
+
+        self.h = self.height()
+        self.w = self.width()
+        self.area = self.h * self.w
 
     def height(self):
         return self.properties[VideoCapturePropertiesName_abbr['height']]
@@ -285,7 +292,82 @@ class Camera(object):
         self.tilt_reset()
         self.zoom_reset()
 
-    def supported_properties(self):
+    def targeting_coordinate(self, target, current) -> bool:
+        pan_move = 0
+        tilt_move = 0
+
+        offset_x, offset_y = np.asarray(current) - target
+
+        if abs(offset_x) > 200:
+            pan_move = (offset_x - (offset_x / abs(offset_x)) * 100) // 100
+
+        if abs(offset_y) > 200:
+            tilt_move = -(offset_y - (offset_y / abs(offset_y)) * 100) // 100
+
+        if pan_move or tilt_move:
+            self.pan_control(pan_move)
+            self.tilt_control(tilt_move)
+            self.skip(1)
+            return True
+        else:
+            return False
+
+    def precise_targeting(self, current_box) -> bool:
+
+        pan_move = 0
+        tilt_move = 0
+
+        tl, tr, br, bl = current_box
+        tl_x, tl_y = tl
+        tr_x, tr_y = tr
+        br_x, br_y = br
+        bl_x, bl_y = bl
+        t_y = min(tl_y, tr_y)
+        b_y = max(bl_y, br_y)
+        offset_y = t_y - (self.h - b_y)
+        l_x = min(tl_x, bl_x)
+        r_x = max(tr_x, br_x)
+        offset_x = l_x - (self.w - r_x)
+
+        if abs(offset_x) > 200:
+            pan_move = (offset_x - (offset_x / abs(offset_x)) * 100) // 100
+        # elif offset_x < -200:
+        #     pan_move = -1
+
+        if abs(offset_y) > 200:
+            tilt_move = -(offset_y - (offset_y / abs(offset_y)) * 100) // 100
+        # elif offset_y < -200:
+        #     tilt_move = 1
+        print('x: {}, y:{}'.format(offset_x, offset_y))
+
+        if pan_move or tilt_move:
+            self.pan_control(pan_move)
+            self.tilt_control(tilt_move)
+            self.skip(1)
+            return True
+        else:
+            return False
+
+    def zoom(self, current_box) -> bool:
+
+        tl, tr, br, bl = current_box
+        tl_x, tl_y = tl
+        tr_x, tr_y = tr
+        br_x, br_y = br
+        bl_x, bl_y = bl
+
+        if min(tl_x, tl_y, self.w - tr_x, tr_y, bl_x, self.h - bl_y, self.w - br_x, self.h - br_y) > 200:
+            self.zoom_control(300)
+            self.skip(1)
+            return True
+        elif min(tl_x, tl_y, self.w - tr_x, tr_y, bl_x, self.h - bl_y, self.w - br_x, self.h - br_y) < 100:
+            self.zoom_control(50)
+            self.skip(1)
+            return True
+        else:
+            return False
+
+    def supported_properties(self) -> dict:
         pro_dict = dict()
         for i in range(70):
             pro_value = self.v.get(i)

@@ -25,7 +25,7 @@ class PLC(Thread):
         self.skip_frame_no = 0
 
         self.timestamp = None
-        # cv.namedWindow('frame', cv.WINDOW_NORMAL)
+        cv.namedWindow('frame', cv.WINDOW_NORMAL)
         cv.createButton('start', self.start_test)
 
     def start_test(self, x, s):

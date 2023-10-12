@@ -1,13 +1,17 @@
+import csv
 from time import sleep
+
+import tools
 
 import cv2 as cv
 import numpy as np
+
 
 from camera import Camera
 from coordinatequeue import CoordinateQueue
 
 import keystone_correction_legacy as kc_legacy
-from tools import DataWriter
+
 
 writer = False
 use_avg = False
@@ -55,7 +59,7 @@ def videoSetting(src, exposure=None, brightness=None, gamma=None, width=None, he
         src.set(cv.CAP_PROP_SETTINGS, 1)
 
 
-def targeting_corner(src, shape, index, current_coordinate):
+def targeting_coordinate(src, shape, index, current_coordinate):
     h, w, d = shape
     coordinate = current_coordinate
     x_offset = coordinate[0] - w / 2
@@ -84,12 +88,12 @@ def targeting_corner(src, shape, index, current_coordinate):
         cv.circle(new_frame, coordinate, 10, (255, 255, 255), 5)
         cv.imshow('capture', new_frame)
         cv.waitKey(10)
-        targeting_corner(src, new_frame.shape, index, coordinate)
+        targeting_coordinate(src, new_frame.shape, index, coordinate)
     else:
         return
 
 
-def focus_on_corner_x(src, frame, index, current_coordinate):
+def _x(src, frame, index, current_coordinate):
     h, w, d = frame.shape
     coordinate = current_coordinate
     x_offset = coordinate[0] - w / 2
@@ -114,13 +118,13 @@ def focus_on_corner_x(src, frame, index, current_coordinate):
         cv.circle(new_frame, coordinate, 10, (255, 255, 255), 5)
         cv.imshow('capture', new_frame)
         cv.waitKey(10)
-        focus_on_corner_x(src, new_frame, index, coordinate)
+        _x(src, new_frame, index, coordinate)
 
     else:
         return
 
 
-def focus_on_corner_y(src, frame, index, current_coordinate):
+def _y(src, frame, index, current_coordinate):
     h, w, d = frame.shape
     y_offset = current_coordinate[1] - h / 2
     print(y_offset)
@@ -139,13 +143,13 @@ def focus_on_corner_y(src, frame, index, current_coordinate):
         ret, new_frame = src.read()
         cv.imshow('capture', frame)
         corners = kc_legacy.get_edges(new_frame)
-        focus_on_corner_y(src, new_frame, index, corners[index])
+        _y(src, new_frame, index, corners[index])
 
     else:
         return
 
 
-def mark_corners(src, start_frame=0, frame_count=3, writer=None):
+def mark_corners(src, start_frame=0, frame_count=3, data_writer=None):
     boxes = []
     sleep(5)
     frame_path_list = []
@@ -157,9 +161,9 @@ def mark_corners(src, start_frame=0, frame_count=3, writer=None):
         frame = frame_org.copy()
         if frame is None:
             src.release()
-            if writer is not None:
-                writer.write_dataset(zip(frame_path_list, boxes))
-                writer.save()
+            if data_writer is not None:
+                data_writer.write_row(zip(frame_path_list, boxes))
+                data_writer.save()
             break
 
         if frame_no < start_frame:
@@ -193,7 +197,7 @@ def mark_corners(src, start_frame=0, frame_count=3, writer=None):
                     kc_legacy.draw_tolerance(frame, corners, lines)
                     cv.imshow('capture', frame)
 
-            if writer is not None:
+            if data_writer is not None:
                 path = './data/' + str(frame_no) + '.jpg'
                 boxes.append(corners)
                 cv.imwrite(path, frame_org)
@@ -202,9 +206,9 @@ def mark_corners(src, start_frame=0, frame_count=3, writer=None):
 
         if cv.waitKey(1) & 0xFF == ord('q'):
             src.release()
-            if writer is not None:
-                writer.write_dataset(zip(frame_path_list, boxes))
-                writer.save()
+            if data_writer is not None:
+                data_writer.write_dataset(zip(frame_path_list, boxes))
+                data_writer.save()
             break
 
         if max_number == 0:
@@ -212,9 +216,9 @@ def mark_corners(src, start_frame=0, frame_count=3, writer=None):
 
         if frame_no > max_number:
             src.release()
-            if writer is not None:
-                writer.write_dataset(zip(frame_path_list, boxes))
-                writer.save()
+            if data_writer is not None:
+                data_writer.write_dataset(zip(frame_path_list, boxes))
+                data_writer.save()
             break
 
 
@@ -294,7 +298,7 @@ def mark_focus(src, writer=None):
         cv.imshow('capture', frame)
         cv.waitKey(10)
         if corners is not None:
-            targeting_corner(src, frame.shape, 0, corners[0])
+            targeting_coordinate(src, frame.shape, 0, corners[0])
             cv.waitKey()
             src.zoom_control(16384)
             frame = src.skip(5)
@@ -364,6 +368,9 @@ def t(src):
 
 
 if __name__ == '__main__':
+
+    new_m()
+
     source = 'live'
     # source = './res/WIN_20220810_16_46_23_Pro.mp4'
     # source = './res/WIN_20221018_16_15_15_Pro.mp4'
@@ -373,10 +380,15 @@ if __name__ == '__main__':
 
     # new_m()
     cv.namedWindow('capture', cv.WINDOW_NORMAL)
-    cap = Camera(width=3840, height=2160, auto_focus=2, setting=1)
+    cap = Camera(camera_no=1, width=3840, height=2160, auto_focus=2, setting=1)
     cap.all_pos_reset()
     if writer:
-        data_writer = DataWriter('./data/data.xlsx')
+        timestamp = tools.time(False)
+        heads = ['timestamp',
+                 'screen_top_left', 'screen_top_right', 'screen_bottom_right', 'screen_bottom_left',
+                 'cross_top_left', 'cross_top_right', 'cross_bottom_right', 'cross_bottom_left']
+        f = open('./data/log_{}.csv'.format(timestamp), mode='w', newline='')
+        data_writer = csv.DictWriter(f, heads)
     else:
         data_writer = None
     try:
@@ -387,7 +399,7 @@ if __name__ == '__main__':
         #    print(ex)
         #    cap.release()
         # mark_focus(cap)
-        mark_corners(cap, frame_count=5, writer=data_writer)
+        mark_corners(cap, frame_count=5, data_writer=data_writer)
         # t(cap)
 
     finally:

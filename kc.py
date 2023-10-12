@@ -2,7 +2,8 @@ from threading import Thread
 
 import numpy as np
 
-from calculation_tools import distance_P2Ps, cal_central_point, get_line, get_parallel_line, get_cross_pt, distance_P2P, \
+from calculation_tools import distance_P2Ps, cal_central_point, get_line, \
+    get_parallel_line, get_cross_pt, distance_P2P, \
     distance_P2L
 from camera import Camera
 import cv2 as cv
@@ -12,11 +13,21 @@ from coordinatequeue import CoordinateQueue
 
 class KeystoneCorrection(Thread):
 
-    def __init__(self, average=3, **kwargs):
+    def __init__(self, average=3, video=None, camera_no=0, debug=False, **kwargs):
+        """**kwargs: Any camera related p"""
         super(KeystoneCorrection, self).__init__()
 
-        self.v = Camera(**kwargs)
-        self.v.all_pos_reset()
+        self.DEBUG = debug
+        if video:
+            self.v = cv.VideoCapture(video)
+            self.h = kwargs['height']
+            self.w = kwargs['width']
+        else:
+            self.v = Camera(camera_no, **kwargs)  # ca
+            self.v.all_pos_reset()
+            self.h = self.v.height()
+            self.w = self.v.width()
+
         self.__cal_flag = False
         self.fuc = None
         self.fuc_w_draw = None
@@ -42,9 +53,6 @@ class KeystoneCorrection(Thread):
         self.v_tolerance_list = None
         self.h_tolerance_list = None
 
-        self.h = self.v.height()
-        self.w = self.v.width()
-
         self.resolution = (int(self.h), int(self.w))
 
         self.GAUSS = 3
@@ -58,13 +66,48 @@ class KeystoneCorrection(Thread):
         self.THRESHOLD2_CANNY = 250
 
         self.front = cv.FONT_HERSHEY_SIMPLEX
-        self.scale = 0.5
+        self.scale = 2
         self.color = (255, 255, 255)
         self.thickness = 2
 
-        cv.namedWindow('capture', cv.WINDOW_NORMAL)
+    def create_trackbar(self, name, win, min_value, max_value, default_value, step=1, action=None):
+        if action:
+            cv.createTrackbar(name, win, int(default_value), int(max_value - min_value), action)
+        else:
+            cv.createTrackbar(name, win, int(default_value), int(max_value - min_value), self.ex_change)
+        cv.setTrackbarMin(name, win, int(min_value))
+        cv.setTrackbarMax(name, win, int(max_value))
+        cv.setTrackbarPos(name, win, int(default_value))
 
-        self.DEBUG = True
+    def ex_change(self, x):
+        pass
+
+    def fa_change(self, x):
+        self.average = x
+
+    def gauss_change(self, x):
+        self.GAUSS = x
+
+    def th1sr_change(self, x):
+        self.THRESHOLD1_SCREEN = x
+
+    def th2sr_change(self, x):
+        self.THRESHOLD2_SCREEN = x
+
+    def th1cr_change(self, x):
+        self.THRESHOLD1_CROSS = x
+
+    def th2cr_change(self, x):
+        self.THRESHOLD2_CROSS = x
+
+    def th1ca_change(self, x):
+        self.THRESHOLD1_CANNY = x
+
+    def th2ca_change(self, x):
+        self.THRESHOLD2_CANNY = x
+
+    def fs_change(self, x):
+        self.scale = x
 
     def show_img(self, img=None, name='img'):
         cv.namedWindow(name, cv.WINDOW_NORMAL)
@@ -105,6 +148,7 @@ class KeystoneCorrection(Thread):
                 self.draw_text('unknown', coordinate)
 
     def draw_data(self):
+        """Drawing data and show image"""
         cv.drawContours(self.fuc_w_draw, [self.corners_avg.astype(int)], -1, (0, 255, 0), 1)
         cv.drawContours(self.fuc_w_draw, [self.cross_avg.astype(int)], -1, (0, 0, 255), 1)
         cv.drawContours(self.fuc_w_draw, [self.extend_cross.astype(int)], -1, (255, 255, 0), 1)
@@ -114,7 +158,9 @@ class KeystoneCorrection(Thread):
         # tb_tolerance, lr_tolerance = kc.cal_tolerance(corners_length)
         self.draw_side_length(self.corners_avg, self.cal_corners_length, -150)
         self.draw_tolerance()
+        # self.show_img(name='capture')
         cv.imshow('capture', self.fuc_w_draw)
+        cv.waitKey(20)
 
     def __set_offset(self, box, offset=0,
                      axis=2):  # axis: 0: x axis outside; 1: y axis outside; 2: x and y axis outside
@@ -144,7 +190,7 @@ class KeystoneCorrection(Thread):
         return np.uint8(mask)
 
     def __raw_data(self):
-        self.__img()
+
         self.screen_box = self.__edges()
 
         if self.screen_box is not None:
@@ -179,7 +225,7 @@ class KeystoneCorrection(Thread):
                         threshold2=self.THRESHOLD2_CANNY)
 
     def __edges(self):
-
+        self.__img()
         canny_screen = self.__preprocess()
         contours_screen, _ = cv.findContours(canny_screen, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         contours_flat_screen = []
@@ -321,6 +367,25 @@ class KeystoneCorrection(Thread):
         self.cal_corners_length = self.__length_calibration()
         self.__tolerance()
 
+    def targeting(self):
+        self.v.all_pos_reset()
+        center = [self.w / 2, self.h / 2]
+
+        current_box = self.__edges()
+        # current_center = cal_central_point(current_box)
+        # while self.v.targeting_coordinate(center, current_center):
+        #     current_box = self.__edges()
+        #     current_center = cal_central_point(current_box)
+
+        while self.v.zoom(current_box):
+            current_box = self.__edges()
+
+        while self.v.precise_targeting(current_box):
+            current_box = self.__edges()
+
+        while self.v.zoom(current_box):
+            current_box = self.__edges()
+
     def tolerance(self, draw=False):
         if self.v.isOpened():
             self.__raw_data()
@@ -330,9 +395,31 @@ class KeystoneCorrection(Thread):
                 if draw:
                     self.draw_data()
         else:
-            print('No camera found, please check your device.')
+            print('No camera found, please check your recording device.')
 
     def run(self):
+        cv.namedWindow('capture', cv.WINDOW_NORMAL)
+
+        if self.DEBUG:
+            cv.namedWindow('settings', cv.WINDOW_NORMAL)
+            self.create_trackbar('FA', 'settings', 0, 20, self.average, action=self.fa_change)
+            self.create_trackbar('GAUSS', 'settings', 0, 19, self.GAUSS, step=2, action=self.gauss_change)
+            self.create_trackbar('THRESHOLD1_SCREEN', 'settings', 0, 255, self.THRESHOLD1_SCREEN,
+                                 action=self.th1sr_change)
+            self.create_trackbar('THRESHOLD2_SCREEN', 'settings', 0, 255, self.THRESHOLD2_SCREEN,
+                                 action=self.th2sr_change)
+            self.create_trackbar('THRESHOLD1_CROSS', 'settings', 0, 255, self.THRESHOLD1_CROSS,
+                                 action=self.th1cr_change)
+            self.create_trackbar('THRESHOLD2_CROSS', 'settings', 0, 255, self.THRESHOLD2_CROSS,
+                                 action=self.th2cr_change)
+            self.create_trackbar('THRESHOLD1_CANNY', 'settings', 0, 255, self.THRESHOLD1_CANNY,
+                                 action=self.th1ca_change)
+            self.create_trackbar('THRESHOLD2_CANNY', 'settings', 0, 255, self.THRESHOLD2_CANNY,
+                                 action=self.th2ca_change)
+            self.create_trackbar('FRONT SIZE', 'settings', 1, 20, self.scale, action=self.fs_change)
+
+        # if self.v.isOpened():
+        #     self.targeting()
 
         try:
             while self.v.isOpened():
