@@ -1,6 +1,5 @@
 from threading import Thread
 
-import cv2
 import numpy as np
 
 from calculation_tools import distance_P2Ps, cal_central_point, get_line, \
@@ -14,20 +13,22 @@ from coordinatequeue import CoordinateQueue
 
 class KeystoneCorrection(Thread):
 
-    def __init__(self):
-
+    def __init__(self, average=3, video=None, camera_no=0, debug=False, **kwargs):
+        """**kwargs: Any camera related p"""
         super(KeystoneCorrection, self).__init__()
 
-        self.main_screen = None
-        self.preprocess_screen = None
-        self.edge_screen = None
-        self.cross_screen = None
+        self.DEBUG = debug
+        if video:
+            self.v = cv.VideoCapture(video)
+            self.h = kwargs['height']
+            self.w = kwargs['width']
+        else:
+            self.v = Camera(camera_no, **kwargs)  # ca
+            self.v.all_pos_reset()
+            self.h = self.v.height()
+            self.w = self.v.width()
 
-        self.DEBUG = None
-        self.v = None
-        self.h = None
-        self.w = None
-        self.resolution = None
+        self.resolution = (int(self.h), int(self.w))
 
         self.__cal_flag = False
         self.fuc = None
@@ -35,6 +36,10 @@ class KeystoneCorrection(Thread):
         self.gray = None
         self.blur_gray = None
         self.threshold_screen = None
+
+        self.average = average
+        self.corners_queue = CoordinateQueue(average)
+        self.cross_queue = CoordinateQueue(average)
 
         self.screen_box = None
         self.cross = None
@@ -50,10 +55,8 @@ class KeystoneCorrection(Thread):
         self.v_tolerance_list = None
         self.h_tolerance_list = None
 
-        self.corners_queue = None
-        self.cross_queue = None
 
-        self.average = 3
+
         self.GAUSS = 3
         self.THRESHOLD1_SCREEN = 80
         self.THRESHOLD2_SCREEN = 200
@@ -63,83 +66,11 @@ class KeystoneCorrection(Thread):
 
         self.THRESHOLD1_CANNY = 200
         self.THRESHOLD2_CANNY = 250
-        self.scale = 2
 
         self.front = cv.FONT_HERSHEY_SIMPLEX
+        self.scale = 2
         self.color = (255, 255, 255)
         self.thickness = 2
-
-        self.properties = dict()
-
-        self.property_update_flag = False
-        self.average_changed_flag = False
-
-    def set_screen(self, main_s, preprocess_s, edge_s, cross_s):
-        self.main_screen = main_s
-        self.preprocess_screen = preprocess_s
-        self.edge_screen = edge_s
-        self.cross_screen = cross_s
-
-    def video_setting(self, video=None, camera_no=0, **kwargs):
-
-        if video:
-            self.v = cv.VideoCapture(video)
-            self.h = self.v.get(cv.CAP_PROP_FRAME_HEIGHT)
-            self.w = self.v.get(cv.CAP_PROP_FRAME_WIDTH)
-        else:
-            self.v = Camera(camera_no, **kwargs)  # ca
-            self.v.all_pos_reset()
-            self.h = self.v.height()
-            self.w = self.v.width()
-
-        self.resolution = (int(self.h), int(self.w))
-
-    def property_setting(self, d):
-        self.properties['frame'] = d['frame']
-        self.properties['gauss'] = d['gauss']
-        self.properties['th1sr'] = d['th1sr']
-        self.properties['th2sr'] = d['th2sr']
-        self.properties['th1cr'] = d['th1cr']
-        self.properties['th2cr'] = d['th2cr']
-        self.properties['th1ca'] = d['th1ca']
-        self.properties['th2ca'] = d['th2ca']
-        self.properties['scale'] = d['scale']
-        self.initial()
-
-    def property_set_single(self, key, value):
-        self.properties[key] = value
-        if key == 'frame':
-            self.update_flag(True)
-        else:
-            self.update_flag()
-
-    def property_update(self):
-        if self.average_changed_flag:
-            self.average = self.properties['frame']
-            self.corners_queue = CoordinateQueue(self.average)
-            self.cross_queue = CoordinateQueue(self.average)
-            self.average_changed_flag = False
-
-        self.GAUSS = self.properties['gauss']
-        self.THRESHOLD1_SCREEN = self.properties['th1sr']
-        self.THRESHOLD2_SCREEN = self.properties['th2sr']
-
-        self.THRESHOLD1_CROSS = self.properties['th1cr']
-        self.THRESHOLD2_CROSS = self.properties['th2cr']
-
-        self.THRESHOLD1_CANNY = self.properties['th1ca']
-        self.THRESHOLD2_CANNY = self.properties['th2ca']
-        self.scale = self.properties['scale']
-
-        self.property_update_flag = False
-
-    def update_flag(self, average_flag=False):
-        self.average_changed_flag = average_flag
-        self.property_update_flag = True
-
-    def initial(self):
-        self.corners_queue = CoordinateQueue(self.average)
-        self.cross_queue = CoordinateQueue(self.average)
 
     def create_trackbar(self, name, win, min_value, max_value, default_value, step=1, action=None):
         if action:
@@ -180,13 +111,13 @@ class KeystoneCorrection(Thread):
     def fs_change(self, x):
         self.scale = x
 
-    def show_img(self, img, screen, main=True):
-        if main:
-            img_show = cv2.resize(img, (1200, 675))
+    def show_img(self, img=None, name='img'):
+        cv.namedWindow(name, cv.WINDOW_NORMAL)
+        if img is not None:
+            cv.imshow(name, img)
         else:
-            img_show = cv2.resize(img, (400, 225))
-        img_show = cv2.cvtColor(img_show, cv2.COLOR_BGR2RGB)
-        screen.show_img(img_show)
+            cv.imshow(name, self.fuc_w_draw)
+        cv.waitKey(10)
 
     def draw_text(self, text, coordinate):
         cv.putText(self.fuc_w_draw, text, coordinate.astype(int), self.front, self.scale, self.color, self.thickness)
@@ -230,8 +161,8 @@ class KeystoneCorrection(Thread):
         self.draw_side_length(self.corners_avg, self.cal_corners_length, -150)
         self.draw_tolerance()
         # self.show_img(name='capture')
-        self.show_img(self.fuc_w_draw, self.main_screen, True)
-
+        cv.imshow('capture', self.fuc_w_draw)
+        cv.waitKey(20)
 
     def __set_offset(self, box, offset=0,
                      axis=2):  # axis: 0: x axis outside; 1: y axis outside; 2: x and y axis outside
@@ -282,11 +213,15 @@ class KeystoneCorrection(Thread):
             gray_w_mask = cv.bitwise_or(self.gray, mask)
             r, threshold_screen = cv.threshold(gray_w_mask, self.THRESHOLD1_CROSS, self.THRESHOLD2_CROSS,
                                                cv.THRESH_BINARY_INV)
-            self.show_img(threshold_screen, self.preprocess_screen, False)
+            if self.DEBUG:
+                self.show_img(threshold_screen, 'preprocess_cross')
         else:  # for screen
             blur_gray = cv.GaussianBlur(self.gray, (self.GAUSS, self.GAUSS), 0)
             r, threshold_screen = cv.threshold(blur_gray, self.THRESHOLD1_SCREEN, self.THRESHOLD2_SCREEN,
                                                cv.THRESH_BINARY)
+            if self.DEBUG:
+                self.show_img(threshold_screen, 'preprocess_screen')
+
         blur_screen = cv.GaussianBlur(threshold_screen, (self.GAUSS, self.GAUSS), 0)
         return cv.Canny(blur_screen, threshold1=self.THRESHOLD1_CANNY,
                         threshold2=self.THRESHOLD2_CANNY)
@@ -309,10 +244,9 @@ class KeystoneCorrection(Thread):
             cor_bottom_right = r_approx[np.asarray(distance_P2Ps((self.w, self.h), r_approx)).argmin()]
 
             box = np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
-
-            cv.drawContours(self.fuc_w_draw, [box], -1, (255, 0, 0), 3)
-            self.show_img(self.fuc_w_draw, self.edge_screen, False)
-
+            if self.DEBUG:
+                cv.drawContours(self.fuc_w_draw, [box], -1, (255, 0, 0), 3)
+                self.show_img(self.fuc_w_draw, 'edges')
             return np.array([cor_top_left, cor_top_right, cor_bottom_right, cor_bottom_left])
         else:
             return None
@@ -322,8 +256,8 @@ class KeystoneCorrection(Thread):
         mask = self.__mask()
         canny_screen = self.__preprocess(mask)
         contours_screen, _ = cv.findContours(canny_screen, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-        cv.drawContours(self.fuc_w_draw, contours_screen, -1, (0, 255, 0), 1)
+        if self.DEBUG:
+            cv.drawContours(self.fuc_w_draw, contours_screen, -1, (0, 255, 0), 1)
         if len(contours_screen) < 4:
             return None
         for contour in contours_screen:
@@ -331,10 +265,10 @@ class KeystoneCorrection(Thread):
             if c_x is None:
                 continue
             cross.append([c_x, c_y])
-
-            cv.circle(self.fuc_w_draw, (round(c_x), round(c_y)), 1, (0, 0, 255), -1)
-
-        self.show_img(self.fuc_w_draw, self.cross_screen, False)
+            if self.DEBUG:
+                cv.circle(self.fuc_w_draw, (round(c_x), round(c_y)), 1, (0, 0, 255), -1)
+        if self.DEBUG:
+            self.show_img(self.fuc_w_draw, 'cross')
 
         if len(cross) < 4:
             return None
@@ -466,13 +400,31 @@ class KeystoneCorrection(Thread):
             print('No camera found, please check your recording device.')
 
     def run(self):
+        cv.namedWindow('capture', cv.WINDOW_NORMAL)
+
+        if self.DEBUG:
+            cv.namedWindow('settings', cv.WINDOW_NORMAL)
+            self.create_trackbar('FA', 'settings', 1, 20, self.average, action=self.fa_change)
+            self.create_trackbar('GAUSS', 'settings', 0, 19, self.GAUSS, step=2, action=self.gauss_change)
+            self.create_trackbar('THRESHOLD1_SCREEN', 'settings', 0, 255, self.THRESHOLD1_SCREEN,
+                                 action=self.th1sr_change)
+            self.create_trackbar('THRESHOLD2_SCREEN', 'settings', 0, 255, self.THRESHOLD2_SCREEN,
+                                 action=self.th2sr_change)
+            self.create_trackbar('THRESHOLD1_CROSS', 'settings', 0, 255, self.THRESHOLD1_CROSS,
+                                 action=self.th1cr_change)
+            self.create_trackbar('THRESHOLD2_CROSS', 'settings', 0, 255, self.THRESHOLD2_CROSS,
+                                 action=self.th2cr_change)
+            self.create_trackbar('THRESHOLD1_CANNY', 'settings', 0, 255, self.THRESHOLD1_CANNY,
+                                 action=self.th1ca_change)
+            self.create_trackbar('THRESHOLD2_CANNY', 'settings', 0, 255, self.THRESHOLD2_CANNY,
+                                 action=self.th2ca_change)
+            self.create_trackbar('FONT SIZE', 'settings', 1, 20, self.scale, action=self.fs_change)
+
         # if self.v.isOpened():
         #     self.targeting()
 
         try:
             while self.v.isOpened():
-                if self.property_update_flag:
-                    self.property_update()
                 self.__raw_data()
                 if self.__cal_flag:
                     self.__process()
